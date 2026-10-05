@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>HT Field App</title>
+<style>
+:root{--bg:#edf2e8;--card:#fbfdf8;--ink:#15251b;--mut:#5f7064;--line:#d3dccd;--acc:#2c7a4b;--on:#fff;--amb:#c9801a;--bad:#b4372a;--tint:rgba(44,122,75,.12)}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1912;--card:#17251b;--ink:#e6f0e6;--mut:#94a899;--line:#2b3d2f;--acc:#5fbd85;--on:#0c140e;--tint:rgba(95,189,133,.16);--amb:#e0a24a;--bad:#e2705f}}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:480px;margin:0 auto;padding:12px 14px 40px}
+h1{font-size:20px;margin:6px 0 10px}h2{font-size:15px;margin:16px 0 8px}
+.mut{color:var(--mut);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
+button{font:inherit;color:var(--ink);background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;min-height:46px}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button.p{background:var(--acc);border-color:var(--acc);color:var(--on);font-weight:700}
+button.w{border-color:var(--amb);color:var(--amb);font-weight:700}
+button.b{width:100%}button:disabled{opacity:.45}
+input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
+.row{display:flex;gap:8px;margin-top:8px}.row>*{flex:1}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.pill{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--tint);color:var(--acc)}
+.pill.off{background:rgba(180,55,42,.14);color:var(--bad)}
+.tm{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--acc);color:var(--on)}.st.PAUSED{background:var(--amb)}
+.arches{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.arch{border:2px solid var(--line);border-radius:48px 48px 8px 8px;padding:20px 8px 8px;background:var(--card)}
+.arch b{display:block;text-align:center;font-size:13px;margin-bottom:6px}
+.lane{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.lane button{padding:8px 0;min-height:40px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid var(--line)}
+.s-AVAILABLE{background:var(--card)}.s-PRE_PLANTING,.s-RESERVED{background:rgba(201,128,26,.25)}.s-ACTIVE,.s-PLANTED,.s-GROWING{background:var(--tint)}.s-HARVEST_READY,.s-HARVESTING{background:rgba(201,128,26,.5)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.chips button{min-height:40px;padding:8px 12px}.chips .on{background:var(--acc);border-color:var(--acc);color:var(--on);font-weight:700}
+.act{display:block;width:100%;text-align:left;margin-bottom:6px}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:9}
+.sh{background:var(--bg);width:min(480px,100%);max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 14px calc(18px + env(safe-area-inset-bottom,0px))}
+.err{background:var(--bad);color:#fff;padding:10px 12px;border-radius:12px;margin-bottom:10px;font-size:13px}
+.link{color:var(--acc);font-weight:700;cursor:pointer;display:inline-block;padding:8px 0}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:20;display:none}
+</style></head><body>
+<div id="app" class="wrap"></div><div id="ov"></div><div id="toast"></div>
+<script>
+const GSR=typeof google!=='undefined'&&google.script&&google.script.run;
+const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const jget=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let URL_=localStorage.getItem('ht-url')||'';
+let S={sess:localStorage.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
+let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
+const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
+const ACTS=[['Soil & bed prep',['Bed shaping','Compost application','Drip line check (15 PSI)']],['Planting',['Planting']],['Crop care',['Weeding','Irrigation check','Pest scouting','Row cover / vent']],['Harvest',['Harvest','Grade & pack','Crate labeling (QR)']],['Clean-up',['Residue clearing','Bed sanitation']]];
+const bedsAll=()=>{const o=[];for(let b=1;b<=6;b++)for(let n=1;n<=6;n++)o.push(`HT-B${b}-0${n}`);return o};
+const normBed=q=>{const m=/^(?:HT-?)?B?\s*(\d)[-_ ](\d{1,2})$/i.exec(String(q).trim());return m&&+m[1]>=1&&+m[1]<=6&&+m[2]>=1&&+m[2]<=6?`HT-B${m[1]}-0${+m[2]}`:''};
+const cohortOn=b=>DB.cohorts.find(c=>c.bed===b&&c.status!=='COMPLETED');
+const bst=b=>{const c=cohortOn(b);return c?c.status:(DB.beds[b]&&DB.beds[b].status)||'AVAILABLE'};
+const open_=()=>W.sessions.filter(s=>s.status!=='DONE');
+const el=s=>(s.end||(s.status==='PAUSED'?s.pauseAt:Date.now()))-s.start-(s.pausedMs||0);
+const fmt=ms=>{let s=Math.max(0,Math.floor(ms/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return(h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0')};
+const sum=a=>(a||[]).reduce((x,y)=>x+y,0),lbs=n=>(Math.round(n*10)/10)+' lb';
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2800)}
+function save(){jset('ht-db',DB);jset('ht-w',W);jset('ht-ob',ob)}
+
+/* ---------- API (matches Code_HT.gs: POST text/plain JSON, {ok,error,auth,data,x}) ---------- */
+async function call(action,d){const body=JSON.stringify(Object.assign({action,session:S.sess},d));
+ if(GSR)return JSON.parse(await new Promise((ok,no)=>google.script.run.withSuccessHandler(ok).withFailureHandler(e=>no(e)).apiCall(body)));
+ if(!URL_)throw new Error('no url');
+ const r=await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body});return r.json()}
+async function api(a,d,q){
+ try{const r=await call(a,d);S.on=true;if(!r.ok){if(r.auth)logout(1,r.error);throw r}return r}
+ catch(e){if(e&&e.ok===false)throw e;S.on=false;if(q){ob.push({a,d});save();return{ok:true,queued:1}}throw{ok:false,error:'No connection. Check signal and try again.'}}}
+let fl=0;
+async function flush(){if(!S.sess||!ob.length||fl)return;fl=1;
+ while(ob.length){try{const r=await call(ob[0].a,ob[0].d);S.on=true;if(!r.ok&&r.auth)break;if(!r.ok)toast(r.error);ob.shift()}catch(e){S.on=false;break}}
+ fl=0;save();render()}
+async function refresh(){if(!S.sess)return;await flush();if(ob.length)return;
+ try{const r=await api('wState');DB=r.data;W=r.x;save();render()}catch(e){render()}}
+
+/* ---------- auth ---------- */
+async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your Worker ID and PIN.';return render()}
+ S.busy=1;S.err='';render();
+ try{if(!GSR){URL_=(F.url||URL_).trim();localStorage.setItem('ht-url',URL_)}
+  const r=await api('login',{userId:u,pin:p,ua:navigator.userAgent.slice(0,160)});
+  S.sess=r.session;S.me=r.user;localStorage.setItem('ht-sess',S.sess);jset('ht-me',S.me);DB=r.data;S.lp='';S.view='home';S.busy=0;await refresh()}
+ catch(e){S.busy=0;S.err=e.error||e.message||'Sign in failed.';render()}}
+function logout(auto,msg){if(!auto&&S.sess)call('logout',{}).catch(()=>{});
+ S.sess='';S.me=null;S.view='home';S.sheet=null;S.err=msg||'';localStorage.removeItem('ht-sess');localStorage.removeItem('ht-me');render()}
+
+/* ---------- session actions (optimistic locally, queued when offline) ---------- */
+const sget=id=>W.sessions.find(s=>s.id===id);
+function patch(id,p){Object.assign(sget(id),p);save()}
+async function wr(a,d){try{await api(a,d,1);if(!ob.length)setTimeout(refresh,300)}catch(e){toast(e.error);await refresh()}}
+function start(act,bed,extra){extra=extra||{};const id='S-'+Math.random().toString(36).slice(2,10);
+ W.sessions.push({id,bed,act,status:'RUNNING',start:Date.now(),pausedMs:0,pauseAt:0,reason:'',crop:extra.crop||'',task:extra.task||'',totes:[]});
+ save();S.sheet=null;S.view='home';render();wr('wStart',{id,bed,act,crop:extra.crop||'',task:extra.task||''})}
+function pickAct(act){const b=S.bed;
+ if(act==='Planting'&&!cohortOn(b)){F={q:''};S.sheet={k:'crop',act};return render()}
+ start(act,b)}
+function pause(id,reason){patch(id,{status:'PAUSED',pauseAt:Date.now(),reason});S.sheet=null;render();wr('wPause',{id,reason})}
+function resume(id){const s=sget(id);patch(id,{status:'RUNNING',pausedMs:(s.pausedMs||0)+Date.now()-s.pauseAt,pauseAt:0,reason:''});render();wr('wResume',{id})}
+function done(id){const s=sget(id),qty=s.act==='Harvest'?sum(s.totes):0;
+ patch(id,{status:'DONE',end:Date.now(),qty,pausedMs:s.status==='PAUSED'?(s.pausedMs||0)+Date.now()-s.pauseAt:s.pausedMs,pauseAt:0});
+ S.sheet=null;render();wr('wDone',{id,notes:F.notes||''})}
+function addTote(id){const w=parseFloat(F.w);if(!(w>0))return toast('Enter the tote weight in lb.');
+ sget(id).totes.push(w);save();F.w='';render();wr('wTote',{id,weight:w})}
+async function sendScout(){if(!F.dom||!F.sev)return toast('Pick a domain and a severity.');
+ const d={bed:S.bed,domain:F.dom,severity:F.sev,notes:F.notes||'',photo:F.photo||''};S.sheet=null;render();
+ try{const r=await api('wScout',d,1);toast(r.queued?'Saved offline. Will sync.':'Finding logged.')}catch(e){toast(e.error)}}
+async function sendIssue(){if(!F.type||!F.sev||!(F.notes||'').trim())return toast('Pick a type, a severity and describe the problem.');
+ const d={bed:S.bed,type:F.type,severity:F.sev,text:F.notes.trim()};S.sheet=null;render();
+ try{const r=await api('wIssue',d,1);toast(r.queued?'Saved offline. Will sync.':'Manager notified.')}catch(e){toast(e.error)}}
+function readPhoto(inp){const f=inp.files[0];if(!f)return;const im=new Image(),u=URL.createObjectURL(f);
+ im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;
+  c.getContext('2d').drawImage(im,0,0,c.width,c.height);F.photo=c.toDataURL('image/jpeg',.6);URL.revokeObjectURL(u);draw()};im.src=u}
+
+/* ---------- views ---------- */
+function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';render()}
+function top(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
+ <span class="mut">${esc(S.me.name)} · <span class="link" onclick="logout()">Log out</span></span></div>`}
+const errB=()=>S.err?`<div class="err">${esc(S.err)}</div>`:'';
+function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your Worker ID and PIN.</p>${errB()}
+ <div class="card"><label class="mut">Worker ID</label><input autocapitalize="none" autocomplete="username" value="${esc(S.lu)}" oninput="S.lu=this.value">
+ <div style="height:10px"></div><label class="mut">PIN</label><input type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" value="${esc(S.lp)}" oninput="S.lp=this.value" onkeydown="if(event.key==='Enter')login()">
+ ${GSR?'':`<div style="height:10px"></div><label class="mut">Web app URL (/exec)</label><input value="${esc(URL_)}" oninput="F.url=this.value">`}
+ <button class="p b" style="margin-top:14px" ${S.busy?'disabled':''} onclick="login()">${S.busy?'Signing in…':'Sign in'}</button></div>`}
+function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
+ return`<div class="card"><div class="row" style="margin:0"><div><span class="st ${s.status}">${p?'PAUSED · '+esc(s.reason):'RUNNING'}</span>
+ <div style="font-weight:700;margin-top:6px">${esc(s.bed)} · ${esc(s.act)}</div>${s.crop?`<div class="mut">Planting ${esc((W.crops.find(c=>c.id===s.crop)||{}).name||s.crop)}</div>`:''}
+ ${hv?`<div class="mut">${s.totes.length} totes · ${lbs(sum(s.totes))}</div>`:''}</div><div class="tm" id="t-${s.id}">${fmt(el(s))}</div></div>
+ <div class="row">${p?`<button onclick="resume('${s.id}')">Resume</button>`:`<button onclick="S.sheet={k:'pause',id:'${s.id}'};render()">Pause</button>`}
+ ${hv?`<button onclick="F={w:''};S.sheet={k:'tote',id:'${s.id}'};render()">Weigh totes</button>`:''}
+ <button class="w" onclick="F={notes:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
+function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').slice(-5).reverse(),
+ as=DB.tasks.filter(t=>t.worker===S.me.name&&t.status==='ASSIGNED'&&!run.some(s=>s.task===t.id));
+ return`${top()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
+ ${run.length?run.map(card).join(''):'<p class="mut">Nothing running. Scan a bed to start a task.</p>'}
+ ${as.length?`<h2>Assigned to you</h2>`+as.map(t=>`<div class="card"><div class="row" style="margin:0;align-items:center"><div><b>${esc(t.bed)} · ${esc(t.act)}</b><div class="mut">Due ${esc(t.date)}</div></div>
+  <button class="p" style="flex:none" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div></div>`).join(''):''}
+ <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
+ ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
+function vScan(){return`${top()}<h1>Find a bed</h1><div class="row" style="margin:0"><input placeholder="Scan or type: HT-B1-01" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()"><button class="p" style="flex:none" onclick="scan()">Go</button></div>
+ ${errB()}<h2>Or tap a tunnel</h2><div class="arches">${[1,2,3,4,5,6].map(b=>`<div class="arch"><b>Tunnel ${b}</b><div class="lane">${[1,2,3,4,5,6].map(n=>{const id=`HT-B${b}-0${n}`;return`<button class="s-${bst(id)}" aria-label="${id}, ${bst(id)}" onclick="go('bed','${id}')">${n}</button>`}).join('')}</div></div>`).join('')}</div>
+ <p class="link" onclick="go('home')">‹ Back to my sessions</p>`}
+function scan(){const b=normBed(S.q);if(b)return go('bed',b);S.err=`No bed matches "${S.q}". Use a format like HT-B2-03.`;render()}
+function vBed(){const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
+ return`${top()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
+ <div class="card"><div>Status: <b>${esc(bst(b).replace(/_/g,' '))}</b></div><div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
+ ${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
+ <div class="row" style="margin-top:0"><button onclick="F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log scout finding</button><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>
+ ${ACTS.map(([g,a])=>`<h2>${g}</h2>`+a.map(x=>`<button class="act" onclick="pickAct('${x.replace(/'/g,"\\'")}')">${esc(x)}</button>`).join('')).join('')}`}
+
+/* ---------- sheets ---------- */
+function chips(list,key,cur){return`<div class="chips">${list.map(x=>`<button class="${cur===x?'on':''}" onclick="F.${key}='${x}';draw()">${x}</button>`).join('')}</div>`}
+function cropList(){const q=(F.q||'').toLowerCase();return W.crops.filter(c=>!q||(c.name+c.id).toLowerCase().includes(q)).map(c=>`<button class="act" onclick="start('${esc(S.sheet.act)}',S.bed,{crop:'${esc(c.id)}'})"><b>${esc(c.name)}</b> <span class="mut">${c.min}–${c.max} days to harvest</span></button>`).join('')||'<p class="mut">No crop found.</p>'}
+function sheet(){const k=S.sheet.k,s=S.sheet.id?sget(S.sheet.id):null;let h='';
+ if(k==='crop')h=`<h1>What is being planted in ${esc(S.bed)}?</h1><input placeholder="Search crops" value="${esc(F.q)}" oninput="F.q=this.value;$('#cl').innerHTML=cropList()"><div id="cl" style="margin-top:8px">${cropList()}</div>`;
+ if(k==='pause')h=`<h1>Pause for…</h1>`+REASONS.map(r=>`<button class="act" onclick="pause('${s.id}','${r}')">${r}</button>`).join('');
+ if(k==='tote')h=`<h1>Weigh totes · ${esc(s.bed)}</h1><div class="row" style="margin:0"><input type="number" inputmode="decimal" step="0.1" placeholder="Weight (lb)" autofocus value="${esc(F.w)}" oninput="F.w=this.value" onkeydown="if(event.key==='Enter')addTote('${s.id}')"><button class="p" style="flex:none" onclick="addTote('${s.id}')">Add tote</button></div>
+  <div class="card" style="margin-top:10px"><b>Total ${lbs(sum(s.totes))}</b> <span class="mut">· ${s.totes.length} totes</span>${s.totes.map((w,i)=>`<div class="mut">Tote ${i+1}: ${lbs(w)}</div>`).join('')}</div>`;
+ if(k==='done')h=`<h1>Complete ${esc(s.act)}?</h1>${s.act==='Harvest'?`<p>Harvest total: <b>${lbs(sum(s.totes))}</b> from ${s.totes.length} totes.</p>${s.totes.length?'':'<p class="mut">No totes weighed yet.</p>'}`:''}<textarea rows="3" placeholder="Notes (optional)" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="done('${s.id}')">Confirm complete</button>`;
+ if(k==='scout')h=`<h1>Scout finding · ${esc(S.bed)}</h1><label class="mut">Domain</label>${chips(DOMS,'dom',F.dom)}<label class="mut">Severity</label>${chips(SEV,'sev',F.sev)}
+  <textarea rows="3" placeholder="What did you see?" oninput="F.notes=this.value">${esc(F.notes)}</textarea><div style="margin-top:8px"><label class="mut">Photo</label><input type="file" accept="image/*" capture="environment" onchange="readPhoto(this)">${F.photo?'<div class="mut">Photo attached.</div>':''}</div>
+  <button class="p b" style="margin-top:10px" onclick="sendScout()">Save finding</button>`;
+ if(k==='issue')h=`<h1>Report an issue · ${esc(S.bed)}</h1><label class="mut">Type</label>${chips(ITYPES,'type',F.type)}<label class="mut">Severity</label>${chips(SEV,'sev',F.sev)}
+  <textarea rows="3" placeholder="Describe the problem" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="sendIssue()">Send to manager</button>`;
+ return`<div class="ov" onclick="if(event.target===this){S.sheet=null;render()}"><div class="sh" role="dialog">${h}<button class="b" style="margin-top:8px" onclick="S.sheet=null;render()">Close</button></div></div>`}
+function draw(){$('#ov').innerHTML=S.sheet?sheet():''}
+function render(){const a=$('#app');
+ a.innerHTML=!S.sess?vLogin():S.view==='scan'?vScan():S.view==='bed'?vBed():vHome();draw()}
+setInterval(()=>{open_().forEach(s=>{const e=document.getElementById('t-'+s.id);if(e)e.textContent=fmt(el(s))})},1000);
+setInterval(()=>{if(S.sess&&!document.hidden&&!S.sheet)refresh()},30000);
+addEventListener('online',()=>{S.on=true;refresh()});addEventListener('offline',()=>{S.on=false;render()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+render();if(S.sess)refresh();
+</script></body></html>
