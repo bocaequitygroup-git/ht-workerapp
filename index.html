@@ -43,10 +43,10 @@ addEventListener('error',e=>{const a=document.getElementById('app');if(a)a.inner
 </script>
 <script>
 const LS=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return localStorage}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v)},removeItem:k=>{delete m[k]}}}})();
-const GSR=typeof google!=='undefined'&&google.script&&google.script.run;
+const GSR=()=>typeof google!=='undefined'&&!!(google.script&&google.script.run);
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jget=(k,d)=>{try{const v=JSON.parse(LS.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{LS.setItem(k,JSON.stringify(v))}catch(e){}};
-let URL_=LS.getItem('ht-url')||'';
+const API_URL='https://script.google.com/macros/s/AKfycbxOW7gq6C_jkWB5fVaFsO8sZmCwgsnPOU353own_8i-bPARdx0MGBKRjNO7lAPhZApTVw/exec';
 let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
@@ -64,12 +64,11 @@ function save(){jset('ht-db',DB);jset('ht-w',W);jset('ht-ob',ob)}
 
 /* ---------- API (matches Code_HT.gs: POST text/plain JSON, {ok,error,auth,data,x}) ---------- */
 async function call(action,d){const body=JSON.stringify(Object.assign({action,session:S.sess},d));
- if(GSR)return JSON.parse(await new Promise((ok,no)=>google.script.run.withSuccessHandler(ok).withFailureHandler(e=>no(e)).apiCall(body)));
- if(!URL_)throw new Error('no url');
- const r=await fetch(URL_,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body});return r.json()}
+ if(GSR())return JSON.parse(await new Promise((ok,no)=>google.script.run.withSuccessHandler(ok).withFailureHandler(e=>no(e)).apiCall(body)));
+ const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body});return r.json()}
 async function api(a,d,q){
  try{const r=await call(a,d);S.on=true;if(!r.ok){if(r.auth)logout(1,r.error);throw r}return r}
- catch(e){if(e&&e.ok===false)throw e;S.on=false;if(q){ob.push({a,d});save();return{ok:true,queued:1}}throw{ok:false,error:'No connection. Check signal and try again.'}}}
+ catch(e){if(e&&e.ok===false)throw e;S.on=false;if(q){ob.push({a,d});save();return{ok:true,queued:1}}throw{ok:false,error:'Cannot reach the server ('+((e&&e.message)||'offline')+'). Check signal and try again.'}}}
 let fl=0;
 async function flush(){if(!S.sess||!ob.length||fl)return;fl=1;
  while(ob.length){try{const r=await call(ob[0].a,ob[0].d);S.on=true;if(!r.ok&&r.auth)break;if(!r.ok)toast(r.error);ob.shift()}catch(e){S.on=false;break}}
@@ -78,9 +77,9 @@ async function refresh(){if(!S.sess)return;await flush();if(ob.length)return;
  try{const r=await api('wState');DB=r.data;W=r.x;save();render()}catch(e){render()}}
 
 /* ---------- auth ---------- */
-async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your Worker ID and PIN.';return render()}
+async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your user name and PIN.';return render()}
  S.busy=1;S.err='';render();
- try{if(!GSR){URL_=(F.url||URL_).trim();LS.setItem('ht-url',URL_)}
+ try{
   const r=await api('login',{userId:u,pin:p,ua:navigator.userAgent.slice(0,160)});
   S.sess=r.session;S.me=r.user;LS.setItem('ht-sess',S.sess);jset('ht-me',S.me);DB=r.data;S.lp='';S.view='home';S.busy=0;await refresh()}
  catch(e){S.busy=0;S.err=e.error||e.message||'Sign in failed.';render()}}
@@ -119,10 +118,9 @@ function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';render()}
 function hdr(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
  <span class="mut">${esc(S.me.name)} · <span class="link" onclick="logout()">Log out</span></span></div>`}
 const errB=()=>S.err?`<div class="err">${esc(S.err)}</div>`:'';
-function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your Worker ID and PIN.</p>${errB()}
- <div class="card"><label class="mut">Worker ID</label><input autocapitalize="none" autocomplete="username" value="${esc(S.lu)}" oninput="S.lu=this.value">
+function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your user name and PIN.</p>${errB()}
+ <div class="card"><label class="mut">User name</label><input autocapitalize="none" autocomplete="username" value="${esc(S.lu)}" oninput="S.lu=this.value">
  <div style="height:10px"></div><label class="mut">PIN</label><input type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" value="${esc(S.lp)}" oninput="S.lp=this.value" onkeydown="if(event.key==='Enter')login()">
- ${GSR?'':`<div style="height:10px"></div><label class="mut">Web app URL (/exec)</label><input value="${esc(URL_)}" oninput="F.url=this.value">`}
  <button class="p b" style="margin-top:14px" ${S.busy?'disabled':''} onclick="login()">${S.busy?'Signing in…':'Sign in'}</button></div>`}
 function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
  return`<div class="card"><div class="row" style="margin:0"><div><span class="st ${s.status}">${p?'PAUSED · '+esc(s.reason):'RUNNING'}</span>
