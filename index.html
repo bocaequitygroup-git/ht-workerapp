@@ -39,11 +39,13 @@ input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--lin
 </style></head><body>
 <div id="app" class="wrap"></div><div id="ov"></div><div id="toast"></div>
 <script>
+addEventListener('error',e=>{const a=document.getElementById('app');if(a)a.innerHTML='<div class="card"><b>App error</b><pre style="white-space:pre-wrap;font-size:12px">'+String(e.message)+' (line '+e.lineno+')</pre></div>'});
+const LS=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return localStorage}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v)},removeItem:k=>{delete m[k]}}}})();
 const GSR=typeof google!=='undefined'&&google.script&&google.script.run;
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const jget=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let URL_=localStorage.getItem('ht-url')||'';
-let S={sess:localStorage.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
+const jget=(k,d)=>{try{const v=JSON.parse(LS.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{LS.setItem(k,JSON.stringify(v))}catch(e){}};
+let URL_=LS.getItem('ht-url')||'';
+let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
 const ACTS=[['Soil & bed prep',['Bed shaping','Compost application','Drip line check (15 PSI)']],['Planting',['Planting']],['Crop care',['Weeding','Irrigation check','Pest scouting','Row cover / vent']],['Harvest',['Harvest','Grade & pack','Crate labeling (QR)']],['Clean-up',['Residue clearing','Bed sanitation']]];
@@ -76,12 +78,12 @@ async function refresh(){if(!S.sess)return;await flush();if(ob.length)return;
 /* ---------- auth ---------- */
 async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your Worker ID and PIN.';return render()}
  S.busy=1;S.err='';render();
- try{if(!GSR){URL_=(F.url||URL_).trim();localStorage.setItem('ht-url',URL_)}
+ try{if(!GSR){URL_=(F.url||URL_).trim();LS.setItem('ht-url',URL_)}
   const r=await api('login',{userId:u,pin:p,ua:navigator.userAgent.slice(0,160)});
-  S.sess=r.session;S.me=r.user;localStorage.setItem('ht-sess',S.sess);jset('ht-me',S.me);DB=r.data;S.lp='';S.view='home';S.busy=0;await refresh()}
+  S.sess=r.session;S.me=r.user;LS.setItem('ht-sess',S.sess);jset('ht-me',S.me);DB=r.data;S.lp='';S.view='home';S.busy=0;await refresh()}
  catch(e){S.busy=0;S.err=e.error||e.message||'Sign in failed.';render()}}
 function logout(auto,msg){if(!auto&&S.sess)call('logout',{}).catch(()=>{});
- S.sess='';S.me=null;S.view='home';S.sheet=null;S.err=msg||'';localStorage.removeItem('ht-sess');localStorage.removeItem('ht-me');render()}
+ S.sess='';S.me=null;S.view='home';S.sheet=null;S.err=msg||'';LS.removeItem('ht-sess');LS.removeItem('ht-me');render()}
 
 /* ---------- session actions (optimistic locally, queued when offline) ---------- */
 const sget=id=>W.sessions.find(s=>s.id===id);
