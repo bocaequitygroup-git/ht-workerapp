@@ -36,6 +36,15 @@ input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--lin
 .err{background:var(--bad);color:#fff;padding:10px 12px;border-radius:12px;margin-bottom:10px;font-size:13px}
 .link{color:var(--acc);font-weight:700;cursor:pointer;display:inline-block;padding:8px 0}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;z-index:20;display:none}
+.top{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:12px}
+.who{flex:1;min-width:0;line-height:1.25}.who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top button{min-height:38px;padding:6px 12px;font-size:13px;font-weight:700;flex:none}
+.pill{white-space:nowrap}
+.qr{display:flex;gap:8px;margin-top:6px}.qr input{flex:1;min-width:0}.qr button{flex:none;padding:0 14px}
+.bedgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.bedb{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:1px;padding:8px 10px;min-height:52px;font-size:13px}
+.bedb .mut{font-size:12px}
+.cam video{width:100%;border-radius:12px;background:#000}
 </style></head><body>
 <div id="app" class="wrap"></div><div id="ov"></div><div id="toast"></div>
 <script>
@@ -47,7 +56,7 @@ const GSR=()=>typeof google!=='undefined'&&!!(google.script&&google.script.run);
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jget=(k,d)=>{try{const v=JSON.parse(LS.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{LS.setItem(k,JSON.stringify(v))}catch(e){}};
 const API_URL='https://script.google.com/macros/s/AKfycbxOW7gq6C_jkWB5fVaFsO8sZmCwgsnPOU353own_8i-bPARdx0MGBKRjNO7lAPhZApTVw/exec';
-let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
+let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',bq:'',lu:'',lp:''};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
 const ACTS=[["Bed prep",["Bed shaping","Compost application","Soil amendment","Bed sanitation","Irrigation line inspection","Mulch installation","Tunnel cleaning"]],["Nursery",["Seed sowing","Germination check","Tray watering","Tray spacing","Seedling inspection","Hardening prep"]],["Vestibule",["Move trays to vestibule","Verify 24-hour hold","Release for planting"]],["Planting",["Bed marking","Spacing check","Planting","Transplanting","Direct seeding","Plant count check","Cohort labeling"]],["Irrigation",["Irrigation startup","Irrigation shutdown","Pressure check","Leak detection","Emitter cleaning","Water application","Irrigation check"]],["Crop care",["Weeding","Thinning","Pruning","Plant training","Mulch repair","Gap filling","Crop support install","Row cover / vent"]],["Scouting",["Pest scouting","Disease scouting"]],["Cohort monitoring",["Growth inspection","Stage verification","Population count","Missing plant count","Health scoring"]],["Harvest",["Harvest prep","Harvest","Wash station delivery","Yield count","Quality sorting"]],["Packing",["Weigh produce","Pack cases","Create crates","Apply labels / QR","Stage shipment"]],["Delivery",["Verify orders","Match crates","Load vehicle","Confirm shipment"]],["Infrastructure",["Plastic inspection","Door / latch repair","Vent inspection","Structural inspection","Tunnel sanitation"]],["Post-harvest",["Residue clearing"]]];
@@ -58,7 +67,10 @@ const RG={NURSERY:['Nursery','Vestibule'],FIELD:['Bed prep','Planting','Irrigati
 const roleOK=g=>{const a=RG[(S.me&&S.me.wrole)||''];return!a||a.includes(g)};
 const TG=[['Infrastructure',(ACTS.find(g=>g[0]==='Infrastructure')||['',[]])[1]],['Tunnel-wide',['Tunnel cleaning','Irrigation startup','Irrigation shutdown']]];
 const bedsAll=()=>{const o=[];for(let b=1;b<=6;b++)for(let n=1;n<=6;n++)o.push(`HT-B${b}-0${n}`);return o};
-const normBed=q=>{const m=/^(?:HT-?)?B?\s*(\d)[-_ ](\d{1,2})$/i.exec(String(q).trim());return m&&+m[1]>=1&&+m[1]<=6&&+m[2]>=1&&+m[2]<=6?`HT-B${m[1]}-0${+m[2]}`:''};
+function parseLoc(q){q=String(q||'').trim();
+ let m=/(?:^|[^A-Z0-9])(?:HT-?)?B\s*(\d)[-_ ]\s*(\d{1,2})(?!\d)/i.exec(q)||/^(\d)[-_ ](\d{1,2})$/.exec(q);
+ if(m){const b=+m[1],n=+m[2];return b>=1&&b<=6&&n>=1&&n<=6?`HT-B${b}-0${n}`:''}
+ m=/^(?:HT|T)\s*-?\s*([1-6])$/i.exec(q);return m?'HT'+m[1]:''}
 const cohortOn=b=>DB.cohorts.find(c=>c.bed===b&&c.status!=='COMPLETED');
 const bst=b=>{const c=cohortOn(b);return c?c.status:(DB.beds[b]&&DB.beds[b].status)||'AVAILABLE'};
 const open_=()=>W.sessions.filter(s=>s.status!=='DONE');
@@ -120,9 +132,10 @@ function readPhoto(inp){const f=inp.files[0];if(!f)return;const im=new Image(),u
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);F.photo=c.toDataURL('image/jpeg',.6);URL.revokeObjectURL(u);draw()};im.src=u}
 
 /* ---------- views ---------- */
-function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';S.all=0;render()}
-function hdr(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
- <span class="mut">${esc(S.me.name)} · <span class="link" onclick="logout()">Log out</span></span></div>`}
+function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';S.bq='';S.all=0;render()}
+function hdr(){return`<div class="top"><span class="pill ${S.on?'':'off'}">${S.on?'● Connected':'● Offline'}${ob.length?' · '+ob.length+' to sync':''}</span>
+ <div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.role||'Worker')}</span></div>
+ <button onclick="logout()">Log Out</button></div>`}
 const errB=()=>S.err?`<div class="err">${esc(S.err)}</div>`:'';
 function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your user name and PIN.</p>${errB()}
  <div class="card"><label class="mut">User name</label><input autocapitalize="none" autocomplete="username" value="${esc(S.lu)}" oninput="S.lu=this.value">
@@ -144,10 +157,37 @@ function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').sl
   <button class="p" style="flex:none" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div></div>`).join(''):''}
  <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
  ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}${s.count!==''&&s.count!=null&&s.count!==undefined&&COUNT[s.act]?' · '+esc(s.count)+' '+esc(s.unit):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
-function vScan(){return`${hdr()}<h1>Find a bed</h1><div class="row" style="margin:0"><input placeholder="Scan or type: HT-B1-01" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()"><button class="p" style="flex:none" onclick="scan()">Go</button></div>
- ${errB()}<h2>Or tap a bed, or a tunnel for tunnel-wide work</h2><div class="arches">${[1,2,3,4,5,6].map(b=>`<div class="arch"><b><button style="min-height:34px;padding:4px 12px" onclick="go('bed','HT${b}')">Tunnel ${b} ›</button></b><div class="lane">${[1,2,3,4,5,6].map(n=>{const id=`HT-B${b}-0${n}`;return`<button class="s-${bst(id)}" aria-label="${id}, ${bst(id)}" onclick="go('bed','${id}')">${n}</button>`}).join('')}</div></div>`).join('')}</div>
- <p class="link" onclick="go('home')">‹ Back to my sessions</p>`}
-function scan(){const t=/^(?:HT|T)\s*-?\s*([1-6])$/i.exec(S.q.trim());if(t)return go('bed','HT'+t[1]);const b=normBed(S.q);if(b)return go('bed',b);S.err=`No bed matches "${S.q}". Use a format like HT-B2-03.`;render()}
+const qrOK=()=>'BarcodeDetector' in window&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+function vScan(){return`${hdr()}<h1>Scan Location</h1>${errB()}
+ <div class="card"><label class="mut" for="qr">Scan or Enter QR Code</label>
+ <div class="qr"><input id="qr" placeholder="HT-B1-01" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()">${qrOK()?`<button onclick="camStart()" aria-label="Scan with camera">📷</button>`:''}</div>
+ <button class="p b" style="margin-top:10px" onclick="scan()">Process Scan</button></div>
+ <div class="card"><h2 style="margin-top:0">Or Search Beds <span class="mut">(no camera needed)</span></h2>
+ <input id="bs" placeholder="e.g. HT-B2-03, B2, or 03" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="${esc(S.bq)}" oninput="setBq(this.value)">
+ <p class="mut" style="margin:8px 0 0">Type a bed ID (HT-B1-01 to HT-B6-06) or block prefix (B1–B6) to search.</p><div id="res">${bedRes()}</div></div>
+ <p class="link" onclick="go('home')">‹ Back to My Sessions</p>`}
+function scan(){const v=S.q.trim();if(!v){S.err='Scan or enter a code first.';return render()}
+ const b=parseLoc(v);if(b)return go('bed',b);S.err=`No location matches "${v}". Use a code like HT-B2-03, or search below.`;render()}
+function setBq(v,fill){S.bq=v;if(fill){const i=$('#bs');if(i)i.value=v}const r=$('#res');if(r)r.innerHTML=bedRes()}
+function bedRes(){const raw=(S.bq||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+ if(!raw)return`<div class="chips">${[1,2,3,4,5,6].map(b=>`<button onclick="setBq('B${b}',1)">B${b}</button>`).join('')}</div>`;
+ let q=raw.replace(/^H?T(?=\d|B|$)/,''),all=!q&&/^H?T$/.test(raw);
+ if(/^\d$/.test(q)||/^\d{3}$/.test(q))q='B'+q;
+ const key=id=>id.slice(3).replace('-',''),/* HT-B2-03 -> B203 */
+  hit=bedsAll().filter(id=>all||(/^\d{2}$/.test(q)?key(id).endsWith(q):key(id).startsWith(q))),t=/^B([1-6])$/.exec(q);
+ const tun=t?`<button class="act" style="margin-top:10px" onclick="go('bed','HT${t[1]}')"><b>Tunnel ${t[1]}</b> <span class="mut">· tunnel-wide work</span></button>`:'';
+ if(!hit.length)return`<p class="mut" style="margin:10px 0 0">No beds match "${esc(S.bq)}". Beds run HT-B1-01 to HT-B6-06.</p>`;
+ return tun+`<div class="bedgrid">${hit.map(id=>{const c=cohortOn(id),st=bst(id),sub=c?(c.cropName||c.crop):st==='AVAILABLE'?'Available':st.replace(/_/g,' ').toLowerCase();
+  return`<button class="bedb s-${st}" onclick="go('bed','${id}')"><b>${id}</b><span class="mut">${esc(sub)}</span></button>`}).join('')}</div>`}
+let camS=null,camT=0;
+async function camStart(){let det;
+ try{det=new BarcodeDetector({formats:['qr_code']})}catch(e){return toast('Camera scanning is not supported here. Type the code or search below.')}
+ try{camS=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})}catch(e){return toast('Camera is blocked. Type the code or search below.')}
+ const o=document.createElement('div');o.id='camov';o.className='ov';
+ o.innerHTML='<div class="sh cam"><h1>Point at the QR code</h1><video id="camv" playsinline muted></video><button class="b" style="margin-top:8px" onclick="camStop()">Cancel</button></div>';
+ document.body.appendChild(o);const v=$('#camv');v.srcObject=camS;try{await v.play()}catch(e){}
+ camT=setInterval(async()=>{try{const r=await det.detect(v);if(r.length){const t=r[0].rawValue;camStop();S.q=t;scan()}}catch(e){}},400)}
+function camStop(){clearInterval(camT);if(camS){camS.getTracks().forEach(t=>t.stop());camS=null}const o=$('#camov');if(o)o.remove()}
 function grp(g,a){return`<h2>${g}</h2>`+a.map(x=>`<button class="act" onclick="pickAct('${x}')">${esc(x)}</button>`).join('')}
 function actList(b){const AL=ACTS.filter(g=>g[0]!=='Infrastructure'&&roleOK(g[0])),c=cohortOn(b),sg=SUG[c?c.status:'none']||SUG.none,A=AL.filter(g=>sg.includes(g[0])),R=AL.filter(g=>!sg.includes(g[0]));
  return`<p class="mut" style="margin:12px 0 0">Suggested for this bed</p>`+(A.length?A.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">Nothing suggested at this stage for your role.</p>')+(R.length?`<button class="b" style="margin:8px 0" onclick="S.all=!S.all;render()">${S.all?'Hide':'Show'} other activities</button>`+(S.all?R.map(g=>grp(g[0],g[1])).join(''):''):'')}
@@ -180,7 +220,7 @@ function draw(){$('#ov').innerHTML=S.sheet?sheet():''}
 function render(){const a=$('#app');
  a.innerHTML=!S.sess?vLogin():S.view==='scan'?vScan():S.view==='bed'?vBed():vHome();draw()}
 setInterval(()=>{open_().forEach(s=>{const e=document.getElementById('t-'+s.id);if(e)e.textContent=fmt(el(s))})},1000);
-setInterval(()=>{if(S.sess&&!document.hidden&&!S.sheet)refresh()},30000);
+setInterval(()=>{const f=document.activeElement;if(S.sess&&!document.hidden&&!S.sheet&&!(f&&/^(INPUT|TEXTAREA)$/.test(f.tagName)))refresh()},30000);
 addEventListener('online',()=>{S.on=true;refresh()});addEventListener('offline',()=>{S.on=false;render()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 render();if(S.sess)refresh();
