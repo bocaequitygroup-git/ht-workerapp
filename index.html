@@ -50,7 +50,13 @@ const API_URL='https://script.google.com/macros/s/AKfycbxOW7gq6C_jkWB5fVaFsO8sZm
 let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',lu:'',lp:''};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
-const ACTS=[['Soil & bed prep',['Bed shaping','Compost application','Drip line check (15 PSI)']],['Planting',['Planting']],['Crop care',['Weeding','Irrigation check','Pest scouting','Row cover / vent']],['Harvest',['Harvest','Grade & pack','Crate labeling (QR)']],['Clean-up',['Residue clearing','Bed sanitation']]];
+const ACTS=[["Bed prep",["Bed shaping","Compost application","Soil amendment","Bed sanitation","Irrigation line inspection","Mulch installation","Tunnel cleaning"]],["Nursery",["Seed sowing","Germination check","Tray watering","Tray spacing","Seedling inspection","Hardening prep"]],["Vestibule",["Move trays to vestibule","Verify 24-hour hold","Release for planting"]],["Planting",["Bed marking","Spacing check","Planting","Transplanting","Direct seeding","Plant count check","Cohort labeling"]],["Irrigation",["Irrigation startup","Irrigation shutdown","Pressure check","Leak detection","Emitter cleaning","Water application","Irrigation check"]],["Crop care",["Weeding","Thinning","Pruning","Plant training","Mulch repair","Gap filling","Crop support install","Row cover / vent"]],["Scouting",["Pest scouting","Disease scouting"]],["Cohort monitoring",["Growth inspection","Stage verification","Population count","Missing plant count","Health scoring"]],["Harvest",["Harvest prep","Harvest","Wash station delivery","Yield count","Quality sorting"]],["Packing",["Weigh produce","Pack cases","Create crates","Apply labels / QR","Stage shipment"]],["Delivery",["Verify orders","Match crates","Load vehicle","Confirm shipment"]],["Infrastructure",["Plastic inspection","Door / latch repair","Vent inspection","Structural inspection","Tunnel sanitation"]],["Post-harvest",["Residue clearing"]]];
+const PLANT=['Planting','Transplanting','Direct seeding'],SCOUTA=['Pest scouting','Disease scouting'];
+const COUNT={'Seed sowing':['Trays sown','TRAYS'],'Tray watering':['Trays watered','TRAYS'],'Tray spacing':['Trays spaced','TRAYS'],'Bed marking':['Rows marked','ROWS'],'Plant count check':['Plants counted','PLANTS'],'Population count':['Plants counted','PLANTS'],'Missing plant count':['Plants missing','PLANTS'],'Gap filling':['Plants replaced','PLANTS'],'Yield count':['Cases counted','CASES'],'Pack cases':['Cases packed','CASES'],'Create crates':['Crates made','CRATES'],'Apply labels / QR':['Crates labeled','CRATES'],'Pressure check':['Pressure reading','PSI']};
+const SUG={none:['Bed prep','Planting'],PRE_PLANTING:['Nursery','Vestibule','Planting','Bed prep'],ACTIVE:['Irrigation','Crop care','Scouting','Cohort monitoring'],HARVEST_READY:['Harvest','Packing','Delivery'],HARVESTING:['Harvest','Packing','Delivery'],COMPLETED:['Post-harvest']};
+const RG={NURSERY:['Nursery','Vestibule'],FIELD:['Bed prep','Planting','Irrigation','Crop care','Scouting','Cohort monitoring','Post-harvest','Infrastructure','Tunnel-wide'],HARVEST_PACKING:['Harvest','Packing','Post-harvest'],LOGISTICS:['Delivery']};
+const roleOK=g=>{const a=RG[(S.me&&S.me.wrole)||''];return!a||a.includes(g)};
+const TG=[['Infrastructure',(ACTS.find(g=>g[0]==='Infrastructure')||['',[]])[1]],['Tunnel-wide',['Tunnel cleaning','Irrigation startup','Irrigation shutdown']]];
 const bedsAll=()=>{const o=[];for(let b=1;b<=6;b++)for(let n=1;n<=6;n++)o.push(`HT-B${b}-0${n}`);return o};
 const normBed=q=>{const m=/^(?:HT-?)?B?\s*(\d)[-_ ](\d{1,2})$/i.exec(String(q).trim());return m&&+m[1]>=1&&+m[1]<=6&&+m[2]>=1&&+m[2]<=6?`HT-B${m[1]}-0${+m[2]}`:''};
 const cohortOn=b=>DB.cohorts.find(c=>c.bed===b&&c.status!=='COMPLETED');
@@ -94,13 +100,13 @@ function start(act,bed,extra){extra=extra||{};const id='S-'+Math.random().toStri
  W.sessions.push({id,bed,act,status:'RUNNING',start:Date.now(),pausedMs:0,pauseAt:0,reason:'',crop:extra.crop||'',task:extra.task||'',totes:[]});
  save();S.sheet=null;S.view='home';render();wr('wStart',{id,bed,act,crop:extra.crop||'',task:extra.task||''})}
 function pickAct(act){const b=S.bed;
- if(act==='Planting'&&!cohortOn(b)){F={q:''};S.sheet={k:'crop',act};return render()}
+ if(PLANT.includes(act)&&!cohortOn(b)){F={q:''};S.sheet={k:'crop',act};return render()}
  start(act,b)}
 function pause(id,reason){patch(id,{status:'PAUSED',pauseAt:Date.now(),reason});S.sheet=null;render();wr('wPause',{id,reason})}
 function resume(id){const s=sget(id);patch(id,{status:'RUNNING',pausedMs:(s.pausedMs||0)+Date.now()-s.pauseAt,pauseAt:0,reason:''});render();wr('wResume',{id})}
-function done(id){const s=sget(id),qty=s.act==='Harvest'?sum(s.totes):0;
- patch(id,{status:'DONE',end:Date.now(),qty,pausedMs:s.status==='PAUSED'?(s.pausedMs||0)+Date.now()-s.pauseAt:s.pausedMs,pauseAt:0});
- S.sheet=null;render();wr('wDone',{id,notes:F.notes||''})}
+function done(id){const s0=sget(id);if(COUNT[s0.act]&&(F.cnt===''||F.cnt==null||isNaN(F.cnt)))return toast('Enter the '+COUNT[s0.act][0].toLowerCase()+'.');const s=sget(id),qty=s.act==='Harvest'?sum(s.totes):0;
+ patch(id,{status:'DONE',end:Date.now(),qty,count:F.cnt||'',unit:(COUNT[s.act]||[])[1]||'',pausedMs:s.status==='PAUSED'?(s.pausedMs||0)+Date.now()-s.pauseAt:s.pausedMs,pauseAt:0});
+ S.sheet=null;render();wr('wDone',{id,notes:F.notes||'',count:F.cnt===''||F.cnt==null?'':Number(F.cnt),unit:(COUNT[s.act]||[])[1]||''})}
 function addTote(id){const w=parseFloat(F.w);if(!(w>0))return toast('Enter the tote weight in lb.');
  sget(id).totes.push(w);save();F.w='';render();wr('wTote',{id,weight:w})}
 async function sendScout(){if(!F.dom||!F.sev)return toast('Pick a domain and a severity.');
@@ -114,7 +120,7 @@ function readPhoto(inp){const f=inp.files[0];if(!f)return;const im=new Image(),u
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);F.photo=c.toDataURL('image/jpeg',.6);URL.revokeObjectURL(u);draw()};im.src=u}
 
 /* ---------- views ---------- */
-function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';render()}
+function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';S.all=0;render()}
 function hdr(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
  <span class="mut">${esc(S.me.name)} · <span class="link" onclick="logout()">Log out</span></span></div>`}
 const errB=()=>S.err?`<div class="err">${esc(S.err)}</div>`:'';
@@ -128,7 +134,8 @@ function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
  ${hv?`<div class="mut">${s.totes.length} totes · ${lbs(sum(s.totes))}</div>`:''}</div><div class="tm" id="t-${s.id}">${fmt(el(s))}</div></div>
  <div class="row">${p?`<button onclick="resume('${s.id}')">Resume</button>`:`<button onclick="S.sheet={k:'pause',id:'${s.id}'};render()">Pause</button>`}
  ${hv?`<button onclick="F={w:''};S.sheet={k:'tote',id:'${s.id}'};render()">Weigh totes</button>`:''}
- <button class="w" onclick="F={notes:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
+ ${SCOUTA.includes(s.act)?`<button onclick="S.bed='${s.bed}';F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log finding</button>`:''}
+ <button class="w" onclick="F={notes:'',cnt:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
 function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').slice(-5).reverse(),
  as=DB.tasks.filter(t=>t.worker===S.me.name&&t.status==='ASSIGNED'&&!run.some(s=>s.task===t.id));
  return`${hdr()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
@@ -136,17 +143,23 @@ function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').sl
  ${as.length?`<h2>Assigned to you</h2>`+as.map(t=>`<div class="card"><div class="row" style="margin:0;align-items:center"><div><b>${esc(t.bed)} · ${esc(t.act)}</b><div class="mut">Due ${esc(t.date)}</div></div>
   <button class="p" style="flex:none" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div></div>`).join(''):''}
  <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
- ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
+ ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}${s.count!==''&&s.count!=null&&s.count!==undefined&&COUNT[s.act]?' · '+esc(s.count)+' '+esc(s.unit):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
 function vScan(){return`${hdr()}<h1>Find a bed</h1><div class="row" style="margin:0"><input placeholder="Scan or type: HT-B1-01" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()"><button class="p" style="flex:none" onclick="scan()">Go</button></div>
- ${errB()}<h2>Or tap a tunnel</h2><div class="arches">${[1,2,3,4,5,6].map(b=>`<div class="arch"><b>Tunnel ${b}</b><div class="lane">${[1,2,3,4,5,6].map(n=>{const id=`HT-B${b}-0${n}`;return`<button class="s-${bst(id)}" aria-label="${id}, ${bst(id)}" onclick="go('bed','${id}')">${n}</button>`}).join('')}</div></div>`).join('')}</div>
+ ${errB()}<h2>Or tap a bed, or a tunnel for tunnel-wide work</h2><div class="arches">${[1,2,3,4,5,6].map(b=>`<div class="arch"><b><button style="min-height:34px;padding:4px 12px" onclick="go('bed','HT${b}')">Tunnel ${b} ›</button></b><div class="lane">${[1,2,3,4,5,6].map(n=>{const id=`HT-B${b}-0${n}`;return`<button class="s-${bst(id)}" aria-label="${id}, ${bst(id)}" onclick="go('bed','${id}')">${n}</button>`}).join('')}</div></div>`).join('')}</div>
  <p class="link" onclick="go('home')">‹ Back to my sessions</p>`}
-function scan(){const b=normBed(S.q);if(b)return go('bed',b);S.err=`No bed matches "${S.q}". Use a format like HT-B2-03.`;render()}
-function vBed(){const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
+function scan(){const t=/^(?:HT|T)\s*-?\s*([1-6])$/i.exec(S.q.trim());if(t)return go('bed','HT'+t[1]);const b=normBed(S.q);if(b)return go('bed',b);S.err=`No bed matches "${S.q}". Use a format like HT-B2-03.`;render()}
+function grp(g,a){return`<h2>${g}</h2>`+a.map(x=>`<button class="act" onclick="pickAct('${x}')">${esc(x)}</button>`).join('')}
+function actList(b){const AL=ACTS.filter(g=>g[0]!=='Infrastructure'&&roleOK(g[0])),c=cohortOn(b),sg=SUG[c?c.status:'none']||SUG.none,A=AL.filter(g=>sg.includes(g[0])),R=AL.filter(g=>!sg.includes(g[0]));
+ return`<p class="mut" style="margin:12px 0 0">Suggested for this bed</p>`+(A.length?A.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">Nothing suggested at this stage for your role.</p>')+(R.length?`<button class="b" style="margin:8px 0" onclick="S.all=!S.all;render()">${S.all?'Hide':'Show'} other activities</button>`+(S.all?R.map(g=>grp(g[0],g[1])).join(''):''):'')}
+function vTunnel(){const b=S.bed,run=open_().filter(s=>s.bed===b),L=TG.filter(g=>roleOK(g[0]));
+ return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another location</p><h1>Tunnel ${b.slice(2)}</h1><div class="card"><div class="mut">Tunnel-wide work, not tied to one bed.</div>${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
+ <div class="row" style="margin-top:0"><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>${L.length?L.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">No tunnel-wide activities for your role.</p>'}`}
+function vBed(){if(/^HT\d$/.test(S.bed))return vTunnel();const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
  return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
  <div class="card"><div>Status: <b>${esc(bst(b).replace(/_/g,' '))}</b></div><div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
  ${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
  <div class="row" style="margin-top:0"><button onclick="F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log scout finding</button><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>
- ${ACTS.map(([g,a])=>`<h2>${g}</h2>`+a.map(x=>`<button class="act" onclick="pickAct('${x.replace(/'/g,"\\'")}')">${esc(x)}</button>`).join('')).join('')}`}
+ ${actList(b)}`}
 
 /* ---------- sheets ---------- */
 function chips(list,key,cur){return`<div class="chips">${list.map(x=>`<button class="${cur===x?'on':''}" onclick="F.${key}='${x}';draw()">${x}</button>`).join('')}</div>`}
@@ -156,7 +169,7 @@ function sheet(){const k=S.sheet.k,s=S.sheet.id?sget(S.sheet.id):null;let h='';
  if(k==='pause')h=`<h1>Pause for…</h1>`+REASONS.map(r=>`<button class="act" onclick="pause('${s.id}','${r}')">${r}</button>`).join('');
  if(k==='tote')h=`<h1>Weigh totes · ${esc(s.bed)}</h1><div class="row" style="margin:0"><input type="number" inputmode="decimal" step="0.1" placeholder="Weight (lb)" autofocus value="${esc(F.w)}" oninput="F.w=this.value" onkeydown="if(event.key==='Enter')addTote('${s.id}')"><button class="p" style="flex:none" onclick="addTote('${s.id}')">Add tote</button></div>
   <div class="card" style="margin-top:10px"><b>Total ${lbs(sum(s.totes))}</b> <span class="mut">· ${s.totes.length} totes</span>${s.totes.map((w,i)=>`<div class="mut">Tote ${i+1}: ${lbs(w)}</div>`).join('')}</div>`;
- if(k==='done')h=`<h1>Complete ${esc(s.act)}?</h1>${s.act==='Harvest'?`<p>Harvest total: <b>${lbs(sum(s.totes))}</b> from ${s.totes.length} totes.</p>${s.totes.length?'':'<p class="mut">No totes weighed yet.</p>'}`:''}<textarea rows="3" placeholder="Notes (optional)" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="done('${s.id}')">Confirm complete</button>`;
+ if(k==='done')h=`<h1>Complete ${esc(s.act)}?</h1>${s.act==='Harvest'?`<p>Harvest total: <b>${lbs(sum(s.totes))}</b> from ${s.totes.length} totes.</p>${s.totes.length?'':'<p class="mut">No totes weighed yet.</p>'}`:''}${COUNT[s.act]?`<label class="mut">${esc(COUNT[s.act][0])}</label><input type="number" inputmode="decimal" placeholder="${esc(COUNT[s.act][1])}" value="${esc(F.cnt)}" oninput="F.cnt=this.value" style="margin-bottom:8px">`:''}<textarea rows="3" placeholder="Notes (optional)" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="done('${s.id}')">Confirm complete</button>`;
  if(k==='scout')h=`<h1>Scout finding · ${esc(S.bed)}</h1><label class="mut">Domain</label>${chips(DOMS,'dom',F.dom)}<label class="mut">Severity</label>${chips(SEV,'sev',F.sev)}
   <textarea rows="3" placeholder="What did you see?" oninput="F.notes=this.value">${esc(F.notes)}</textarea><div style="margin-top:8px"><label class="mut">Photo</label><input type="file" accept="image/*" capture="environment" onchange="readPhoto(this)">${F.photo?'<div class="mut">Photo attached.</div>':''}</div>
   <button class="p b" style="margin-top:10px" onclick="sendScout()">Save finding</button>`;
