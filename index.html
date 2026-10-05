@@ -40,6 +40,8 @@ input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--lin
 <div id="app" class="wrap"></div><div id="ov"></div><div id="toast"></div>
 <script>
 addEventListener('error',e=>{const a=document.getElementById('app');if(a)a.innerHTML='<div class="card"><b>App error</b><pre style="white-space:pre-wrap;font-size:12px">'+String(e.message)+' (line '+e.lineno+')</pre></div>'});
+</script>
+<script>
 const LS=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return localStorage}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v)},removeItem:k=>{delete m[k]}}}})();
 const GSR=typeof google!=='undefined'&&google.script&&google.script.run;
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -114,7 +116,7 @@ function readPhoto(inp){const f=inp.files[0];if(!f)return;const im=new Image(),u
 
 /* ---------- views ---------- */
 function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';render()}
-function top(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
+function hdr(){return`<div class="bar"><span class="pill ${S.on?'':'off'}">${S.on?'Online':'Offline'}${ob.length?' · '+ob.length+' waiting to sync':''}</span>
  <span class="mut">${esc(S.me.name)} · <span class="link" onclick="logout()">Log out</span></span></div>`}
 const errB=()=>S.err?`<div class="err">${esc(S.err)}</div>`:'';
 function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your Worker ID and PIN.</p>${errB()}
@@ -131,18 +133,18 @@ function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
  <button class="w" onclick="F={notes:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
 function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').slice(-5).reverse(),
  as=DB.tasks.filter(t=>t.worker===S.me.name&&t.status==='ASSIGNED'&&!run.some(s=>s.task===t.id));
- return`${top()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
+ return`${hdr()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
  ${run.length?run.map(card).join(''):'<p class="mut">Nothing running. Scan a bed to start a task.</p>'}
  ${as.length?`<h2>Assigned to you</h2>`+as.map(t=>`<div class="card"><div class="row" style="margin:0;align-items:center"><div><b>${esc(t.bed)} · ${esc(t.act)}</b><div class="mut">Due ${esc(t.date)}</div></div>
   <button class="p" style="flex:none" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div></div>`).join(''):''}
  <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
  ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
-function vScan(){return`${top()}<h1>Find a bed</h1><div class="row" style="margin:0"><input placeholder="Scan or type: HT-B1-01" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()"><button class="p" style="flex:none" onclick="scan()">Go</button></div>
+function vScan(){return`${hdr()}<h1>Find a bed</h1><div class="row" style="margin:0"><input placeholder="Scan or type: HT-B1-01" value="${esc(S.q)}" oninput="S.q=this.value" onkeydown="if(event.key==='Enter')scan()"><button class="p" style="flex:none" onclick="scan()">Go</button></div>
  ${errB()}<h2>Or tap a tunnel</h2><div class="arches">${[1,2,3,4,5,6].map(b=>`<div class="arch"><b>Tunnel ${b}</b><div class="lane">${[1,2,3,4,5,6].map(n=>{const id=`HT-B${b}-0${n}`;return`<button class="s-${bst(id)}" aria-label="${id}, ${bst(id)}" onclick="go('bed','${id}')">${n}</button>`}).join('')}</div></div>`).join('')}</div>
  <p class="link" onclick="go('home')">‹ Back to my sessions</p>`}
 function scan(){const b=normBed(S.q);if(b)return go('bed',b);S.err=`No bed matches "${S.q}". Use a format like HT-B2-03.`;render()}
 function vBed(){const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
- return`${top()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
+ return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
  <div class="card"><div>Status: <b>${esc(bst(b).replace(/_/g,' '))}</b></div><div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
  ${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
  <div class="row" style="margin-top:0"><button onclick="F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log scout finding</button><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>
