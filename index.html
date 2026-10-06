@@ -46,6 +46,7 @@ input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--lin
 .bedb .mut{font-size:12px}
 .cam video{width:100%;border-radius:12px;background:#000}
 .rb{margin-top:6px;padding:6px 10px;border-radius:10px;background:var(--tint);border-left:4px solid var(--amb);font-size:13px}.rb .mut{font-size:12px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.kv span{display:block;font-size:12px;color:var(--mut)}.kv b{font-size:15px}
 </style></head><body>
 <div id="app" class="wrap"></div><div id="ov"></div><div id="toast"></div>
 <script>
@@ -53,11 +54,14 @@ addEventListener('error',e=>{const a=document.getElementById('app');if(a)a.inner
 </script>
 <script>
 const LS=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return localStorage}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v)},removeItem:k=>{delete m[k]}}}})();
+/* Login is per browser tab: sessionStorage is wiped when the tab/browser closes, so a new tab always starts at sign-in. */
+const SS=(()=>{try{sessionStorage.setItem('_t','1');sessionStorage.removeItem('_t');return sessionStorage}catch(e){const m={};return{getItem:k=>k in m?m[k]:null,setItem:(k,v)=>{m[k]=String(v)},removeItem:k=>{delete m[k]}}}})();
+['ht-sess','ht-me'].forEach(k=>LS.removeItem(k)); /* drop logins saved by older versions */
 const GSR=()=>typeof google!=='undefined'&&!!(google.script&&google.script.run);
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jget=(k,d)=>{try{const v=JSON.parse(LS.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{LS.setItem(k,JSON.stringify(v))}catch(e){}};
 const API_URL='https://script.google.com/macros/s/AKfycbxOW7gq6C_jkWB5fVaFsO8sZmCwgsnPOU353own_8i-bPARdx0MGBKRjNO7lAPhZApTVw/exec';
-let S={sess:LS.getItem('ht-sess')||'',me:jget('ht-me',null),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',bq:'',lu:'',lp:''};
+let S={sess:SS.getItem('ht-sess')||'',me:(()=>{try{return JSON.parse(SS.getItem('ht-me'))}catch(e){return null}})(),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',bq:'',lu:'',lp:''};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
 const ACTS=[["Bed prep",["Bed shaping","Compost application","Soil amendment","Bed sanitation","Irrigation line inspection","Mulch installation","Tunnel cleaning"]],["Nursery",["Seed sowing","Germination check","Tray watering","Tray spacing","Seedling inspection","Hardening prep"]],["Vestibule",["Move trays to vestibule","Verify 24-hour hold","Release for planting"]],["Planting",["Bed marking","Spacing check","Planting","Transplanting","Direct seeding","Plant count check","Cohort labeling"]],["Irrigation",["Irrigation startup","Irrigation shutdown","Pressure check","Leak detection","Emitter cleaning","Water application","Irrigation check"]],["Crop care",["Weeding","Thinning","Pruning","Plant training","Mulch repair","Gap filling","Crop support install","Row cover / vent"]],["Scouting",["Pest scouting","Disease scouting"]],["Cohort monitoring",["Growth inspection","Stage verification","Population count","Missing plant count","Health scoring"]],["Harvest",["Harvest prep","Harvest","Wash station delivery","Yield count","Quality sorting"]],["Packing",["Weigh produce","Pack cases","Create crates","Apply labels / QR","Stage shipment"]],["Delivery",["Verify orders","Match crates","Load vehicle","Confirm shipment"]],["Infrastructure",["Plastic inspection","Door / latch repair","Vent inspection","Structural inspection","Tunnel sanitation"]],["Post-harvest",["Residue clearing"]]];
@@ -100,10 +104,12 @@ async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your u
  S.busy=1;S.err='';render();
  try{
   const r=await api('login',{userId:u,pin:p,ua:navigator.userAgent.slice(0,160)});
-  S.sess=r.session;S.me=r.user;LS.setItem('ht-sess',S.sess);jset('ht-me',S.me);DB=r.data;S.lp='';S.view='home';S.busy=0;await refresh()}
+  const own=LS.getItem('ht-owner');if(own&&own!==String(r.user.id)){W={sessions:[],crops:[]};ob=[]}  /* different worker on this device: never inherit the last worker's cache or unsent items */
+  LS.setItem('ht-owner',String(r.user.id));S.sess=r.session;S.me=r.user;SS.setItem('ht-sess',S.sess);SS.setItem('ht-me',JSON.stringify(S.me));DB=r.data;save();S.lp='';S.view='home';S.busy=0;await refresh()}
  catch(e){S.busy=0;S.err=e.error||e.message||'Sign in failed.';render()}}
-function logout(auto,msg){if(!auto&&S.sess)call('logout',{}).catch(()=>{});
- S.sess='';S.me=null;S.view='home';S.sheet=null;S.err=msg||'';LS.removeItem('ht-sess');LS.removeItem('ht-me');render()}
+function logout(auto,msg){if(!auto&&ob.length&&!confirm(ob.length+' item(s) have not synced yet and will be lost if a different worker signs in on this device. Log out anyway?'))return;
+ if(!auto&&S.sess)call('logout',{}).catch(()=>{});
+ S.sess='';S.me=null;S.view='home';S.sheet=null;S.err=msg||'';SS.removeItem('ht-sess');SS.removeItem('ht-me');render()}
 
 /* ---------- session actions (optimistic locally, queued when offline) ---------- */
 const sget=id=>W.sessions.find(s=>s.id===id);
@@ -142,12 +148,13 @@ function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your u
  <div class="card"><label class="mut">User name</label><input autocapitalize="none" autocomplete="username" value="${esc(S.lu)}" oninput="S.lu=this.value">
  <div style="height:10px"></div><label class="mut">PIN</label><input type="password" inputmode="numeric" autocomplete="current-password" maxlength="8" value="${esc(S.lp)}" oninput="S.lp=this.value" onkeydown="if(event.key==='Enter')login()">
  <button class="p b" style="margin-top:14px" ${S.busy?'disabled':''} onclick="login()">${S.busy?'Signing in…':'Sign in'}</button></div>`}
+const about=x=>(x.desc?`<div class="mut" style="margin-top:2px">${esc(x.desc)}</div>`:'')+(x.by?`<div class="mut">Assigned by ${esc(x.by)}</div>`:'');
 function reBox(r){try{if(typeof r==='string')r=r?JSON.parse(r):null}catch(e){r=null}
  return r&&r.from?`<div class="rb">↪ Reassigned from <b>${esc(r.from)}</b> to you by ${esc(r.by)}${r.note?' · “'+esc(r.note)+'”':''}<div class="mut">${esc(r.at)}</div></div>`:''}
 function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
  return`<div class="card"><div class="row" style="margin:0"><div><span class="st ${s.status}">${p?'PAUSED · '+esc(s.reason):'RUNNING'}</span>
  <div style="font-weight:700;margin-top:6px">${esc(s.bed)} · ${esc(s.act)}</div>${s.crop?`<div class="mut">Planting ${esc((W.crops.find(c=>c.id===s.crop)||{}).name||s.crop)}</div>`:''}
- ${hv?`<div class="mut">${s.totes.length} totes · ${lbs(sum(s.totes))}</div>`:''}${reBox(s.re)}</div><div class="tm" id="t-${s.id}">${fmt(el(s))}</div></div>
+ ${hv?`<div class="mut">${s.totes.length} totes · ${lbs(sum(s.totes))}</div>`:''}${about(DB.tasks.find(x=>x.id===s.task)||{})}${reBox(s.re)}</div><div class="tm" id="t-${s.id}">${fmt(el(s))}</div></div>
  <div class="row">${p?`<button onclick="resume('${s.id}')">Resume</button>`:`<button onclick="S.sheet={k:'pause',id:'${s.id}'};render()">Pause</button>`}
  ${hv?`<button onclick="F={w:''};S.sheet={k:'tote',id:'${s.id}'};render()">Weigh totes</button>`:''}
  ${SCOUTA.includes(s.act)?`<button onclick="S.bed='${s.bed}';F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log finding</button>`:''}
@@ -156,8 +163,9 @@ function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').sl
  as=DB.tasks.filter(t=>t.worker===S.me.name&&t.status==='ASSIGNED'&&!run.some(s=>s.task===t.id));
  return`${hdr()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
  ${run.length?run.map(card).join(''):'<p class="mut">Nothing running. Scan a bed to start a task.</p>'}
- ${as.length?`<h2>Assigned to you</h2>`+as.map(t=>`<div class="card"><div class="row" style="margin:0;align-items:center"><div><b>${esc(t.bed)} · ${esc(t.act)}</b><div class="mut">Due ${esc(t.date)}</div>${reBox(t.re)}</div>
-  <button class="p" style="flex:none" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div></div>`).join(''):''}
+ ${as.length?`<h2>Assigned to you</h2>`+as.map(t=>{const c=cohortOn(t.bed);return`<div class="card"><span class="st">NEW ASSIGNMENT</span><div style="font-weight:700;font-size:17px;margin-top:6px">${esc(t.act)}</div>${about(t)}${reBox(t.re)}
+ <div class="kv"><div><span>Bed</span><b>${esc(String(t.bed).replace(/^HT-/,''))}</b></div><div><span>Cohort</span><b>${esc(c?c.id:'-')}</b></div><div><span>Crop</span><b>${esc(c?(c.cropName||c.crop):'-')}</b></div></div>
+ <div class="mut" style="margin-top:6px">Due ${esc(t.date)}</div><button class="p b" style="margin-top:8px" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div>`}).join(''):''}
  <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
  ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}${s.count!==''&&s.count!=null&&s.count!==undefined&&COUNT[s.act]?' · '+esc(s.count)+' '+esc(s.unit):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
 const qrOK=()=>'BarcodeDetector' in window&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
