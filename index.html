@@ -78,7 +78,7 @@ const SUG={POST_HARVEST:['Turnover Protocol','Biosecurity'],TURNOVER:['Turnover 
  HARVEST_READY:['Harvest Operations','Packing Operations','Logistics'],HARVESTING:['Harvest Operations','Packing Operations','Logistics']};
 const RG={NURSERY:['Nursery Operations','Biosecurity'],HARVEST_PACKING:['Harvest Operations','Packing Operations','Logistics','Turnover Protocol'],LOGISTICS:['Logistics']};
 const roleOK=g=>{const w=(S.me&&S.me.wrole)||'';if(RG[w])return RG[w].includes(g);if(w==='FIELD')return!['Nursery Operations','Harvest Operations','Packing Operations','Logistics'].includes(g);return true};
-const blockedMsg=(a,g)=>g.state?'Turnover steps run only after harvest close-out':'Needs first: '+(g.missing||[]).slice(0,2).map(id=>(aById(id)||{name:id}).name).join(', ')+((g.missing||[]).length>2?' +'+((g.missing||[]).length-2):'');
+const blockedMsg=(a,g)=>g.state?'Turnover step · bed is not in turnover':'Out of sequence · usually after: '+(g.missing||[]).slice(0,2).map(id=>(aById(id)||{name:id}).name).join(', ')+((g.missing||[]).length>2?' +'+((g.missing||[]).length-2):'');
 const bedsAll=()=>{const o=[];for(let b=1;b<=6;b++)for(let n=1;n<=6;n++)o.push(`HT-B${b}-0${n}`);return o};
 function parseLoc(q){q=String(q||'').trim();
  let m=/(?:^|[^A-Z0-9])(?:HT-?)?B\s*(\d)[-_ ]\s*(\d{1,2})(?!\d)/i.exec(q)||/^(\d)[-_ ](\d{1,2})$/.exec(q);
@@ -125,7 +125,6 @@ const sget=id=>W.sessions.find(s=>s.id===id);
 function patch(id,p){Object.assign(sget(id),p);save()}
 async function wr(a,d){try{await api(a,d,1);if(!ob.length)setTimeout(refresh,300)}catch(e){toast(e.error);await refresh()}}
 function start(aid,bed,extra){extra=extra||{};const A=aById(aid)||aByName(aid);if(!A)return toast('That activity is not in the catalog. Refresh and try again.');
- const g=S.gate&&S.gate.bed===bed&&S.gate.blocked&&S.gate.blocked[A.id];if(g)return toast(blockedMsg(A,g));
  const id='S-'+Math.random().toString(36).slice(2,10);
  W.sessions.push({id,bed,act:A.name,actId:A.id,status:'RUNNING',start:Date.now(),pausedMs:0,pauseAt:0,reason:'',crop:extra.crop||'',task:extra.task||'',totes:[]});
  save();S.sheet=null;S.view='home';render();wr('wStart',{id,bed,act:A.name,actId:A.id,crop:extra.crop||'',task:extra.task||''})}
@@ -211,7 +210,9 @@ async function camStart(){let det;
  document.body.appendChild(o);const v=$('#camv');v.srcObject=camS;try{await v.play()}catch(e){}
  camT=setInterval(async()=>{try{const r=await det.detect(v);if(r.length){const t=r[0].rawValue;camStop();S.q=t;scan()}}catch(e){}},400)}
 function camStop(){clearInterval(camT);if(camS){camS.getTracks().forEach(t=>t.stop());camS=null}const o=$('#camov');if(o)o.remove()}
-function grp(g,a){const bd=(S.gate&&S.gate.bed===S.bed&&S.gate.blocked)||{};return`<h2>${esc(g)}</h2>`+a.map(x=>{const k=bd[x.id];return`<button class="act" ${k?'disabled':''} onclick="pickAct('${x.id}')">${esc(x.name)}${k?`<div class="mut">${esc(blockedMsg(x,k))}</div>`:''}</button>`}).join('')}
+function grp(g,a){const gt=S.gate&&S.gate.bed===S.bed?S.gate:null,bd=(gt&&gt.blocked)||{},left=gt&&gt.turn&&Array.isArray(gt.turn.left)?gt.turn.left.map(x=>x.id):null;
+ return`<h2>${esc(g)}</h2>`+a.map(x=>{const k=bd[x.id],chk=left&&x.req?(left.includes(x.id)?'○ ':'✓ '):'',dn=left&&x.req&&!left.includes(x.id);
+  return`<button class="act" onclick="pickAct('${x.id}')">${chk}${esc(x.name)}${dn?'<div class="mut">Done on this turnover</div>':k?`<div class="mut" style="color:var(--amb)">${esc(blockedMsg(x,k))}</div>`:''}</button>`}).join('')}
 function actList(b){if(!CAT().length)return'<p class="mut" style="margin:12px 0">Activity list not loaded yet. Go back to My sessions and tap Refresh.</p>';
  const st=(S.gate&&S.gate.bed===b&&S.gate.state)||bst(b),sg=SUG[st]||[],AL=groups(CAT().filter(a=>roleOK(a.group))),A=AL.filter(g=>sg.includes(g[0])),R=AL.filter(g=>!sg.includes(g[0]));
  return`<p class="mut" style="margin:12px 0 0">Suggested for this bed</p>`+(A.length?A.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">Nothing suggested at this stage for your role.</p>')+(R.length?`<button class="b" style="margin:8px 0" onclick="S.all=!S.all;render()">${S.all?'Hide':'Show'} other activities</button>`+(S.all?R.map(g=>grp(g[0],g[1])).join(''):''):'')}
@@ -220,7 +221,7 @@ function vTunnel(){const b=S.bed,run=open_().filter(s=>s.bed===b),L=groups(CAT()
  <div class="row" style="margin-top:0"><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>${L.length?L.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">No tunnel-wide activities for your role.</p>'}`}
 function vBed(){if(/^HT\d$/.test(S.bed))return vTunnel();const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
  return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
- <div class="card"><div>Status: <b>${esc(((S.gate&&S.gate.bed===b&&S.gate.state)||bst(b)).replace(/_/g,' '))}</b></div>${S.gate&&S.gate.bed===b&&S.gate.turn?`<div class="mut">Turnover ${esc(S.gate.turn.progress)} complete · ${esc(S.gate.turn.phase)}</div>`:''}<div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
+ <div class="card"><div>Status: <b>${esc(((S.gate&&S.gate.bed===b&&S.gate.state)||bst(b)).replace(/_/g,' '))}</b></div>${S.gate&&S.gate.bed===b&&S.gate.turn?`<div class="mut">Turnover checklist ${esc(S.gate.turn.progress)} done${Array.isArray(S.gate.turn.left)&&S.gate.turn.left.length?' · still to do: '+esc(S.gate.turn.left.slice(0,4).map(x=>x.name).join(', '))+(S.gate.turn.left.length>4?' +'+(S.gate.turn.left.length-4)+' more':''):''}</div><div class="mut">Start any task in any order. The manager signs off the bed.</div>`:''}<div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
  ${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
  <div class="row" style="margin-top:0"><button onclick="F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log scout finding</button><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>
  ${actList(b)}`}
