@@ -28,7 +28,7 @@ input,textarea{font:inherit;width:100%;padding:12px;border:1.5px solid var(--lin
 .arch b{display:block;text-align:center;font-size:13px;margin-bottom:6px}
 .lane{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
 .lane button{padding:8px 0;min-height:40px;font-size:12px;font-weight:700;border-radius:6px;border:1px solid var(--line)}
-.s-AVAILABLE{background:var(--card)}.s-PRE_PLANTING,.s-RESERVED{background:rgba(201,128,26,.25)}.s-ACTIVE,.s-PLANTED,.s-GROWING{background:var(--tint)}.s-HARVEST_READY,.s-HARVESTING{background:rgba(201,128,26,.5)}
+.s-AVAILABLE{background:var(--card)}.s-POST_HARVEST,.s-TURNOVER,.s-HOLD,.s-UNKNOWN{background:rgba(180,55,42,.14)}.s-OCCUPIED{background:var(--tint)}.s-PRE_PLANTING,.s-RESERVED{background:rgba(201,128,26,.25)}.s-ACTIVE,.s-PLANTED,.s-GROWING{background:var(--tint)}.s-HARVEST_READY,.s-HARVESTING{background:rgba(201,128,26,.5)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.chips button{min-height:40px;padding:8px 12px}.chips .on{background:var(--acc);border-color:var(--acc);color:var(--on);font-weight:700}
 .act{display:block;width:100%;text-align:left;margin-bottom:6px}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:9}
@@ -61,23 +61,31 @@ const GSR=()=>typeof google!=='undefined'&&!!(google.script&&google.script.run);
 const $=s=>document.querySelector(s),esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jget=(k,d)=>{try{const v=JSON.parse(LS.getItem(k));return v==null?d:v}catch(e){return d}},jset=(k,v)=>{try{LS.setItem(k,JSON.stringify(v))}catch(e){}};
 const API_URL='https://script.google.com/macros/s/AKfycbxOW7gq6C_jkWB5fVaFsO8sZmCwgsnPOU353own_8i-bPARdx0MGBKRjNO7lAPhZApTVw/exec';
-let S={sess:SS.getItem('ht-sess')||'',me:(()=>{try{return JSON.parse(SS.getItem('ht-me'))}catch(e){return null}})(),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',bq:'',lu:'',lp:''};
+let S={sess:SS.getItem('ht-sess')||'',me:(()=>{try{return JSON.parse(SS.getItem('ht-me'))}catch(e){return null}})(),on:navigator.onLine,view:'home',bed:null,sheet:null,busy:0,err:'',q:'',bq:'',lu:'',lp:'',gate:null};
 let DB=jget('ht-db',{beds:{},cohorts:[],tasks:[]}),W=jget('ht-w',{sessions:[],crops:[]}),ob=jget('ht-ob',[]),F={};
 const REASONS=['Break','Lunch','End of Day'],DOMS=['Pest pressure','Disease','Plant condition','Soil & water','Weeds'],SEV=['LOW','MEDIUM','HIGH'],ITYPES=['Equipment failure','Safety concern','Bed blocked','Other'];
-const ACTS=[["Bed prep",["Bed shaping","Compost application","Soil amendment","Bed sanitation","Irrigation line inspection","Mulch installation","Tunnel cleaning"]],["Nursery",["Seed sowing","Germination check","Tray watering","Tray spacing","Seedling inspection","Hardening prep"]],["Vestibule",["Move trays to vestibule","Verify 24-hour hold","Release for planting"]],["Planting",["Bed marking","Spacing check","Planting","Transplanting","Direct seeding","Plant count check","Cohort labeling"]],["Irrigation",["Irrigation startup","Irrigation shutdown","Pressure check","Leak detection","Emitter cleaning","Water application","Irrigation check"]],["Crop care",["Weeding","Thinning","Pruning","Plant training","Mulch repair","Gap filling","Crop support install","Row cover / vent"]],["Scouting",["Pest scouting","Disease scouting"]],["Cohort monitoring",["Growth inspection","Stage verification","Population count","Missing plant count","Health scoring"]],["Harvest",["Harvest prep","Harvest","Wash station delivery","Yield count","Quality sorting"]],["Packing",["Weigh produce","Pack cases","Create crates","Apply labels / QR","Stage shipment"]],["Delivery",["Verify orders","Match crates","Load vehicle","Confirm shipment"]],["Infrastructure",["Plastic inspection","Door / latch repair","Vent inspection","Structural inspection","Tunnel sanitation"]],["Post-harvest",["Residue clearing"]]];
-const PLANT=['Planting','Transplanting','Direct seeding'],SCOUTA=['Pest scouting','Disease scouting'];
-const COUNT={'Seed sowing':['Trays sown','TRAYS'],'Tray watering':['Trays watered','TRAYS'],'Tray spacing':['Trays spaced','TRAYS'],'Bed marking':['Rows marked','ROWS'],'Plant count check':['Plants counted','PLANTS'],'Population count':['Plants counted','PLANTS'],'Missing plant count':['Plants missing','PLANTS'],'Gap filling':['Plants replaced','PLANTS'],'Yield count':['Cases counted','CASES'],'Pack cases':['Cases packed','CASES'],'Create crates':['Crates made','CRATES'],'Apply labels / QR':['Crates labeled','CRATES'],'Pressure check':['Pressure reading','PSI']};
-const SUG={none:['Bed prep','Planting'],PRE_PLANTING:['Nursery','Vestibule','Planting','Bed prep'],ACTIVE:['Irrigation','Crop care','Scouting','Cohort monitoring'],HARVEST_READY:['Harvest','Packing','Delivery'],HARVESTING:['Harvest','Packing','Delivery'],COMPLETED:['Post-harvest']};
-const RG={NURSERY:['Nursery','Vestibule'],FIELD:['Bed prep','Planting','Irrigation','Crop care','Scouting','Cohort monitoring','Post-harvest','Infrastructure','Tunnel-wide'],HARVEST_PACKING:['Harvest','Packing','Post-harvest'],LOGISTICS:['Delivery']};
-const roleOK=g=>{const a=RG[(S.me&&S.me.wrole)||''];return!a||a.includes(g)};
-const TG=[['Infrastructure',(ACTS.find(g=>g[0]==='Infrastructure')||['',[]])[1]],['Tunnel-wide',['Tunnel cleaning','Irrigation startup','Irrigation shutdown']]];
+/* Activities come from the live catalog (ACTIVITY_REFERENCE via getToday -> DB.catalog). Nothing about which activities exist is hard-coded here. */
+const CAT=()=>Array.isArray(DB.catalog)?DB.catalog:[],aById=id=>CAT().find(a=>a.id===id),aByName=n=>{n=String(n||'').trim().toLowerCase();return CAT().find(a=>a.name.toLowerCase()===n)};
+const aOf=s=>aById(s.actId)||aByName(s.act);
+const cntOf=s=>{const a=aOf(s);return a&&a.count?['Count'+(a.unit?' ('+a.unit.toLowerCase()+')':''),a.unit||'']:null};
+const isPlant=a=>!!a&&a.beh==='PLANTING',isTote=a=>!!a&&a.beh==='HARVEST_TOTES',isScout=a=>!!a&&/scouting/i.test(a.name);
+const isFinal=a=>!!a&&a.type==='INSPECTION'&&!!a.req&&!CAT().some(b=>b.req&&b.pre===a.id);   /* terminal inspection of the turnover chain: needs PASS/FAIL */
+const needsBed=a=>!!(a.pre||a.req||['VESTIBULE_ENTRY','VESTIBULE_RELEASE','PLANTING','HARVEST_COMPLETE'].includes(a.beh));
+const groups=l=>{const m=[];l.forEach(a=>{const k=a.group||'Other';let g=m.find(x=>x[0]===k);if(!g)m.push(g=[k,[]]);g[1].push(a)});return m};
+const SUG={POST_HARVEST:['Turnover Protocol','Biosecurity'],TURNOVER:['Turnover Protocol','Biosecurity'],HOLD:['Turnover Protocol','Biosecurity'],
+ AVAILABLE:['Planting Operations','Nursery Operations','Irrigation Management','Fertility & Nutrient Management'],RESERVED:['Nursery Operations','Planting Operations','Irrigation Management'],PRE_PLANTING:['Nursery Operations','Planting Operations','Irrigation Management'],
+ ACTIVE:['Crop Care','Irrigation Management','IPM (Pest & Disease)','Fertility & Nutrient Management','Canopy Management','Environmental Control'],OCCUPIED:['Crop Care','Irrigation Management','IPM (Pest & Disease)','Fertility & Nutrient Management','Canopy Management','Environmental Control'],
+ HARVEST_READY:['Harvest Operations','Packing Operations','Logistics'],HARVESTING:['Harvest Operations','Packing Operations','Logistics']};
+const RG={NURSERY:['Nursery Operations','Biosecurity'],HARVEST_PACKING:['Harvest Operations','Packing Operations','Logistics','Turnover Protocol'],LOGISTICS:['Logistics']};
+const roleOK=g=>{const w=(S.me&&S.me.wrole)||'';if(RG[w])return RG[w].includes(g);if(w==='FIELD')return!['Nursery Operations','Harvest Operations','Packing Operations','Logistics'].includes(g);return true};
+const blockedMsg=(a,g)=>g.state?'Turnover steps run only after harvest close-out':'Needs first: '+(g.missing||[]).slice(0,2).map(id=>(aById(id)||{name:id}).name).join(', ')+((g.missing||[]).length>2?' +'+((g.missing||[]).length-2):'');
 const bedsAll=()=>{const o=[];for(let b=1;b<=6;b++)for(let n=1;n<=6;n++)o.push(`HT-B${b}-0${n}`);return o};
 function parseLoc(q){q=String(q||'').trim();
  let m=/(?:^|[^A-Z0-9])(?:HT-?)?B\s*(\d)[-_ ]\s*(\d{1,2})(?!\d)/i.exec(q)||/^(\d)[-_ ](\d{1,2})$/.exec(q);
  if(m){const b=+m[1],n=+m[2];return b>=1&&b<=6&&n>=1&&n<=6?`HT-B${b}-0${n}`:''}
  m=/^(?:HT|T)\s*-?\s*([1-6])$/i.exec(q);return m?'HT'+m[1]:''}
 const cohortOn=b=>DB.cohorts.find(c=>c.bed===b&&c.status!=='COMPLETED');
-const bst=b=>{const c=cohortOn(b);return c?c.status:(DB.beds[b]&&DB.beds[b].status)||'AVAILABLE'};
+const bst=b=>{const c=cohortOn(b);return c?c.status:(DB.beds[b]&&DB.beds[b].status)||'UNKNOWN'};
 const open_=()=>W.sessions.filter(s=>s.status!=='DONE');
 const el=s=>(s.end||(s.status==='PAUSED'?s.pauseAt:Date.now()))-s.start-(s.pausedMs||0);
 const fmt=ms=>{let s=Math.max(0,Math.floor(ms/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60);s%=60;return(h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0')};
@@ -97,7 +105,8 @@ async function flush(){if(!S.sess||!ob.length||fl)return;fl=1;
  while(ob.length){try{const r=await call(ob[0].a,ob[0].d);S.on=true;if(!r.ok&&r.auth)break;if(!r.ok)toast(r.error);ob.shift()}catch(e){S.on=false;break}}
  fl=0;save();render()}
 async function refresh(){if(!S.sess)return;await flush();if(ob.length)return;
- try{const r=await api('wState');DB=r.data;W=r.x;save();render()}catch(e){render()}}
+ try{const r=await api('wState');DB=r.data;W=r.x;save();render();if(S.view==='bed'&&/^HT-B/.test(S.bed||''))loadGate(S.bed)}catch(e){render()}}
+async function loadGate(b){try{const r=await api('wGate',{bed:b});if(S.bed===b){S.gate=r.x;render()}}catch(e){}}
 
 /* ---------- auth ---------- */
 async function login(){const u=S.lu.trim(),p=S.lp;if(!u||!p){S.err='Enter your user name and PIN.';return render()}
@@ -115,17 +124,20 @@ function logout(auto,msg){if(!auto&&ob.length&&!confirm(ob.length+' item(s) have
 const sget=id=>W.sessions.find(s=>s.id===id);
 function patch(id,p){Object.assign(sget(id),p);save()}
 async function wr(a,d){try{await api(a,d,1);if(!ob.length)setTimeout(refresh,300)}catch(e){toast(e.error);await refresh()}}
-function start(act,bed,extra){extra=extra||{};const id='S-'+Math.random().toString(36).slice(2,10);
- W.sessions.push({id,bed,act,status:'RUNNING',start:Date.now(),pausedMs:0,pauseAt:0,reason:'',crop:extra.crop||'',task:extra.task||'',totes:[]});
- save();S.sheet=null;S.view='home';render();wr('wStart',{id,bed,act,crop:extra.crop||'',task:extra.task||''})}
-function pickAct(act){const b=S.bed;
- if(PLANT.includes(act)&&!cohortOn(b)){F={q:''};S.sheet={k:'crop',act};return render()}
- start(act,b)}
+function start(aid,bed,extra){extra=extra||{};const A=aById(aid)||aByName(aid);if(!A)return toast('That activity is not in the catalog. Refresh and try again.');
+ const g=S.gate&&S.gate.bed===bed&&S.gate.blocked&&S.gate.blocked[A.id];if(g)return toast(blockedMsg(A,g));
+ const id='S-'+Math.random().toString(36).slice(2,10);
+ W.sessions.push({id,bed,act:A.name,actId:A.id,status:'RUNNING',start:Date.now(),pausedMs:0,pauseAt:0,reason:'',crop:extra.crop||'',task:extra.task||'',totes:[]});
+ save();S.sheet=null;S.view='home';render();wr('wStart',{id,bed,act:A.name,actId:A.id,crop:extra.crop||'',task:extra.task||''})}
+function pickAct(aid){const b=S.bed,A=aById(aid);
+ if(isPlant(A)&&!cohortOn(b)){F={q:''};S.sheet={k:'crop',act:aid};return render()}
+ start(aid,b)}
 function pause(id,reason){patch(id,{status:'PAUSED',pauseAt:Date.now(),reason});S.sheet=null;render();wr('wPause',{id,reason})}
 function resume(id){const s=sget(id);patch(id,{status:'RUNNING',pausedMs:(s.pausedMs||0)+Date.now()-s.pauseAt,pauseAt:0,reason:''});render();wr('wResume',{id})}
-function done(id){const s0=sget(id);if(COUNT[s0.act]&&(F.cnt===''||F.cnt==null||isNaN(F.cnt)))return toast('Enter the '+COUNT[s0.act][0].toLowerCase()+'.');const s=sget(id),qty=s.act==='Harvest'?sum(s.totes):0;
- patch(id,{status:'DONE',end:Date.now(),qty,count:F.cnt||'',unit:(COUNT[s.act]||[])[1]||'',pausedMs:s.status==='PAUSED'?(s.pausedMs||0)+Date.now()-s.pauseAt:s.pausedMs,pauseAt:0});
- S.sheet=null;render();wr('wDone',{id,notes:F.notes||'',count:F.cnt===''||F.cnt==null?'':Number(F.cnt),unit:(COUNT[s.act]||[])[1]||''})}
+function done(id){const s0=sget(id),A=aOf(s0),c=cntOf(s0);if(c&&(F.cnt===''||F.cnt==null||isNaN(F.cnt)))return toast('Enter the '+c[0].toLowerCase()+'.');
+ if(isFinal(A)&&!F.res)return toast('Record the inspection result: PASS or FAIL.');const s=sget(id),qty=isTote(A)?sum(s.totes):0;
+ patch(id,{status:'DONE',end:Date.now(),qty,count:F.cnt||'',unit:c?c[1]:'',pausedMs:s.status==='PAUSED'?(s.pausedMs||0)+Date.now()-s.pauseAt:s.pausedMs,pauseAt:0});
+ S.sheet=null;render();wr('wDone',{id,notes:F.notes||'',count:F.cnt===''||F.cnt==null?'':Number(F.cnt),unit:c?c[1]:'',result:F.res||''})}
 function addTote(id){const w=parseFloat(F.w);if(!(w>0))return toast('Enter the tote weight in lb.');
  sget(id).totes.push(w);save();F.w='';render();wr('wTote',{id,weight:w})}
 async function sendScout(){if(!F.dom||!F.sev)return toast('Pick a domain and a severity.');
@@ -139,7 +151,7 @@ function readPhoto(inp){const f=inp.files[0];if(!f)return;const im=new Image(),u
   c.getContext('2d').drawImage(im,0,0,c.width,c.height);F.photo=c.toDataURL('image/jpeg',.6);URL.revokeObjectURL(u);draw()};im.src=u}
 
 /* ---------- views ---------- */
-function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';S.bq='';S.all=0;render()}
+function go(v,b){S.view=v;if(b)S.bed=b;S.err='';S.q='';S.bq='';S.all=0;if(v==='bed'){S.gate=null;if(/^HT-B/.test(S.bed||''))loadGate(S.bed)}render()}
 function hdr(){return`<div class="top"><span class="pill ${S.on?'':'off'}">${S.on?'● Connected':'● Offline'}${ob.length?' · '+ob.length+' to sync':''}</span>
  <div class="who"><b>${esc(S.me.name)}</b><span class="mut">${esc(S.me.role||'Worker')}</span></div>
  <button onclick="logout()">Log Out</button></div>`}
@@ -151,14 +163,14 @@ function vLogin(){return`<h1>HT Field App</h1><p class="mut">Sign in with your u
 const about=x=>(x.desc?`<div class="mut" style="margin-top:2px">${esc(x.desc)}</div>`:'')+(x.by?`<div class="mut">Assigned by ${esc(x.by)}</div>`:'');
 function reBox(r){try{if(typeof r==='string')r=r?JSON.parse(r):null}catch(e){r=null}
  return r&&r.from?`<div class="rb">↪ Reassigned from <b>${esc(r.from)}</b> to you by ${esc(r.by)}${r.note?' · “'+esc(r.note)+'”':''}<div class="mut">${esc(r.at)}</div></div>`:''}
-function card(s){const hv=s.act==='Harvest',p=s.status==='PAUSED';
+function card(s){const A=aOf(s),hv=isTote(A),p=s.status==='PAUSED';
  return`<div class="card"><div class="row" style="margin:0"><div><span class="st ${s.status}">${p?'PAUSED · '+esc(s.reason):'RUNNING'}</span>
  <div style="font-weight:700;margin-top:6px">${esc(s.bed)} · ${esc(s.act)}</div>${s.crop?`<div class="mut">Planting ${esc((W.crops.find(c=>c.id===s.crop)||{}).name||s.crop)}</div>`:''}
  ${hv?`<div class="mut">${s.totes.length} totes · ${lbs(sum(s.totes))}</div>`:''}${about(DB.tasks.find(x=>x.id===s.task)||{})}${reBox(s.re)}</div><div class="tm" id="t-${s.id}">${fmt(el(s))}</div></div>
  <div class="row">${p?`<button onclick="resume('${s.id}')">Resume</button>`:`<button onclick="S.sheet={k:'pause',id:'${s.id}'};render()">Pause</button>`}
  ${hv?`<button onclick="F={w:''};S.sheet={k:'tote',id:'${s.id}'};render()">Weigh totes</button>`:''}
- ${SCOUTA.includes(s.act)?`<button onclick="S.bed='${s.bed}';F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log finding</button>`:''}
- <button class="w" onclick="F={notes:'',cnt:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
+ ${isScout(A)?`<button onclick="S.bed='${s.bed}';F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log finding</button>`:''}
+ <button class="w" onclick="F={notes:'',cnt:'',res:''};S.sheet={k:'done',id:'${s.id}'};render()">Complete</button></div></div>`}
 function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').slice(-5).reverse(),
  as=DB.tasks.filter(t=>t.worker===S.me.name&&t.status==='ASSIGNED'&&!run.some(s=>s.task===t.id));
  return`${hdr()}<div class="bar"><h1 style="margin:0">My sessions</h1><button onclick="refresh()">Refresh</button></div>${errB()}
@@ -167,7 +179,7 @@ function vHome(){const run=open_(),dn=W.sessions.filter(s=>s.status==='DONE').sl
  <div class="kv"><div><span>Bed</span><b>${esc(String(t.bed).replace(/^HT-/,''))}</b></div><div><span>Cohort</span><b>${esc(c?c.id:'-')}</b></div><div><span>Crop</span><b>${esc(c?(c.cropName||c.crop):'-')}</b></div></div>
  <div class="mut" style="margin-top:6px">Due ${esc(t.date)}</div><button class="p b" style="margin-top:8px" onclick="start('${esc(t.act)}','${esc(t.bed)}',{task:'${esc(t.id)}'})">Start</button></div>`}).join(''):''}
  <button class="p b" style="margin:12px 0" onclick="go('scan')">+ Start new task</button>
- ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}${s.count!==''&&s.count!=null&&s.count!==undefined&&COUNT[s.act]?' · '+esc(s.count)+' '+esc(s.unit):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
+ ${dn.length?`<h2>Done recently</h2>`+dn.map(s=>`<div class="card row" style="margin-bottom:6px"><div><b>${esc(s.bed)}</b> <span class="mut">${esc(s.act)}${s.qty?' · '+lbs(s.qty):''}${s.count!==''&&s.count!=null&&s.count!==undefined&&cntOf(s)?' · '+esc(s.count)+' '+esc(s.unit):''}</span></div><div class="mut" style="flex:none">${fmt(el(s))}</div></div>`).join(''):''}`}
 const qrOK=()=>'BarcodeDetector' in window&&!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
 function vScan(){return`${hdr()}<h1>Scan Location</h1>${errB()}
  <div class="card"><label class="mut" for="qr">Scan or Enter QR Code</label>
@@ -188,7 +200,7 @@ function bedRes(){const raw=(S.bq||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
   hit=bedsAll().filter(id=>all||(/^\d{2}$/.test(q)?key(id).endsWith(q):key(id).startsWith(q))),t=/^B([1-6])$/.exec(q);
  const tun=t?`<button class="act" style="margin-top:10px" onclick="go('bed','HT${t[1]}')"><b>Tunnel ${t[1]}</b> <span class="mut">· tunnel-wide work</span></button>`:'';
  if(!hit.length)return`<p class="mut" style="margin:10px 0 0">No beds match "${esc(S.bq)}". Beds run HT-B1-01 to HT-B6-06.</p>`;
- return tun+`<div class="bedgrid">${hit.map(id=>{const c=cohortOn(id),st=bst(id),sub=c?(c.cropName||c.crop):st==='AVAILABLE'?'Available':st.replace(/_/g,' ').toLowerCase();
+ return tun+`<div class="bedgrid">${hit.map(id=>{const c=cohortOn(id),st=bst(id),sub=c?(c.cropName||c.crop):st==='AVAILABLE'?'Available':st==='POST_HARVEST'||st==='TURNOVER'?'Turnover · not available':st.replace(/_/g,' ').toLowerCase();
   return`<button class="bedb s-${st}" onclick="go('bed','${id}')"><b>${id}</b><span class="mut">${esc(sub)}</span></button>`}).join('')}</div>`}
 let camS=null,camT=0;
 async function camStart(){let det;
@@ -199,15 +211,16 @@ async function camStart(){let det;
  document.body.appendChild(o);const v=$('#camv');v.srcObject=camS;try{await v.play()}catch(e){}
  camT=setInterval(async()=>{try{const r=await det.detect(v);if(r.length){const t=r[0].rawValue;camStop();S.q=t;scan()}}catch(e){}},400)}
 function camStop(){clearInterval(camT);if(camS){camS.getTracks().forEach(t=>t.stop());camS=null}const o=$('#camov');if(o)o.remove()}
-function grp(g,a){return`<h2>${g}</h2>`+a.map(x=>`<button class="act" onclick="pickAct('${x}')">${esc(x)}</button>`).join('')}
-function actList(b){const AL=ACTS.filter(g=>g[0]!=='Infrastructure'&&roleOK(g[0])),c=cohortOn(b),sg=SUG[c?c.status:'none']||SUG.none,A=AL.filter(g=>sg.includes(g[0])),R=AL.filter(g=>!sg.includes(g[0]));
+function grp(g,a){const bd=(S.gate&&S.gate.bed===S.bed&&S.gate.blocked)||{};return`<h2>${esc(g)}</h2>`+a.map(x=>{const k=bd[x.id];return`<button class="act" ${k?'disabled':''} onclick="pickAct('${x.id}')">${esc(x.name)}${k?`<div class="mut">${esc(blockedMsg(x,k))}</div>`:''}</button>`}).join('')}
+function actList(b){if(!CAT().length)return'<p class="mut" style="margin:12px 0">Activity list not loaded yet. Go back to My sessions and tap Refresh.</p>';
+ const st=(S.gate&&S.gate.bed===b&&S.gate.state)||bst(b),sg=SUG[st]||[],AL=groups(CAT().filter(a=>roleOK(a.group))),A=AL.filter(g=>sg.includes(g[0])),R=AL.filter(g=>!sg.includes(g[0]));
  return`<p class="mut" style="margin:12px 0 0">Suggested for this bed</p>`+(A.length?A.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">Nothing suggested at this stage for your role.</p>')+(R.length?`<button class="b" style="margin:8px 0" onclick="S.all=!S.all;render()">${S.all?'Hide':'Show'} other activities</button>`+(S.all?R.map(g=>grp(g[0],g[1])).join(''):''):'')}
-function vTunnel(){const b=S.bed,run=open_().filter(s=>s.bed===b),L=TG.filter(g=>roleOK(g[0]));
+function vTunnel(){const b=S.bed,run=open_().filter(s=>s.bed===b),L=groups(CAT().filter(a=>!needsBed(a)&&roleOK(a.group)));
  return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another location</p><h1>Tunnel ${b.slice(2)}</h1><div class="card"><div class="mut">Tunnel-wide work, not tied to one bed.</div>${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
  <div class="row" style="margin-top:0"><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>${L.length?L.map(g=>grp(g[0],g[1])).join(''):'<p class="mut">No tunnel-wide activities for your role.</p>'}`}
 function vBed(){if(/^HT\d$/.test(S.bed))return vTunnel();const b=S.bed,c=cohortOn(b),run=open_().filter(s=>s.bed===b);
  return`${hdr()}<p class="link" onclick="go('scan')">‹ Pick another bed</p><h1>${esc(b)}</h1>
- <div class="card"><div>Status: <b>${esc(bst(b).replace(/_/g,' '))}</b></div><div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
+ <div class="card"><div>Status: <b>${esc(((S.gate&&S.gate.bed===b&&S.gate.state)||bst(b)).replace(/_/g,' '))}</b></div>${S.gate&&S.gate.bed===b&&S.gate.turn?`<div class="mut">Turnover ${esc(S.gate.turn.progress)} complete · ${esc(S.gate.turn.phase)}</div>`:''}<div>Crop: ${c?esc(c.cropName||c.crop):'None planted'}</div>${c?`<div class="mut">Cohort ${esc(c.id)}${c.dob?' · planted '+esc(c.dob):''}</div>`:''}
  ${run.length?`<div class="mut" style="margin-top:6px">You already have ${run.length} running here.</div>`:''}</div>
  <div class="row" style="margin-top:0"><button onclick="F={sev:'',notes:'',dom:''};S.sheet={k:'scout'};render()">Log scout finding</button><button class="w" onclick="F={type:'',sev:'',notes:''};S.sheet={k:'issue'};render()">Report issue</button></div>
  ${actList(b)}`}
@@ -220,7 +233,7 @@ function sheet(){const k=S.sheet.k,s=S.sheet.id?sget(S.sheet.id):null;let h='';
  if(k==='pause')h=`<h1>Pause for…</h1>`+REASONS.map(r=>`<button class="act" onclick="pause('${s.id}','${r}')">${r}</button>`).join('');
  if(k==='tote')h=`<h1>Weigh totes · ${esc(s.bed)}</h1><div class="row" style="margin:0"><input type="number" inputmode="decimal" step="0.1" placeholder="Weight (lb)" autofocus value="${esc(F.w)}" oninput="F.w=this.value" onkeydown="if(event.key==='Enter')addTote('${s.id}')"><button class="p" style="flex:none" onclick="addTote('${s.id}')">Add tote</button></div>
   <div class="card" style="margin-top:10px"><b>Total ${lbs(sum(s.totes))}</b> <span class="mut">· ${s.totes.length} totes</span>${s.totes.map((w,i)=>`<div class="mut">Tote ${i+1}: ${lbs(w)}</div>`).join('')}</div>`;
- if(k==='done')h=`<h1>Complete ${esc(s.act)}?</h1>${s.act==='Harvest'?`<p>Harvest total: <b>${lbs(sum(s.totes))}</b> from ${s.totes.length} totes.</p>${s.totes.length?'':'<p class="mut">No totes weighed yet.</p>'}`:''}${COUNT[s.act]?`<label class="mut">${esc(COUNT[s.act][0])}</label><input type="number" inputmode="decimal" placeholder="${esc(COUNT[s.act][1])}" value="${esc(F.cnt)}" oninput="F.cnt=this.value" style="margin-bottom:8px">`:''}<textarea rows="3" placeholder="Notes (optional)" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="done('${s.id}')">Confirm complete</button>`;
+ if(k==='done')h=`<h1>Complete ${esc(s.act)}?</h1>${isFinal(aOf(s))?`<label class="mut">Inspection result</label>${chips(['PASS','FAIL'],'res',F.res)}`:''}${isTote(aOf(s))?`<p>Harvest total: <b>${lbs(sum(s.totes))}</b> from ${s.totes.length} totes.</p>${s.totes.length?'':'<p class="mut">No totes weighed yet.</p>'}`:''}${cntOf(s)?`<label class="mut">${esc(cntOf(s)[0])}</label><input type="number" inputmode="decimal" placeholder="${esc(cntOf(s)[1])}" value="${esc(F.cnt)}" oninput="F.cnt=this.value" style="margin-bottom:8px">`:''}<textarea rows="3" placeholder="Notes (optional)" oninput="F.notes=this.value">${esc(F.notes)}</textarea><button class="p b" style="margin-top:10px" onclick="done('${s.id}')">Confirm complete</button>`;
  if(k==='scout')h=`<h1>Scout finding · ${esc(S.bed)}</h1><label class="mut">Domain</label>${chips(DOMS,'dom',F.dom)}<label class="mut">Severity</label>${chips(SEV,'sev',F.sev)}
   <textarea rows="3" placeholder="What did you see?" oninput="F.notes=this.value">${esc(F.notes)}</textarea><div style="margin-top:8px"><label class="mut">Photo</label><input type="file" accept="image/*" capture="environment" onchange="readPhoto(this)">${F.photo?'<div class="mut">Photo attached.</div>':''}</div>
   <button class="p b" style="margin-top:10px" onclick="sendScout()">Save finding</button>`;
